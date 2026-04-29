@@ -1,8 +1,10 @@
 # frozen_string_literal: true
 
+require_relative "lib/gem_docs/version"
+
 Gem::Specification.new do |spec|
   spec.name = "gem-docs"
-  spec.version = "0.1.0"
+  spec.version = GemDocs::VERSION
   spec.authors = [ "GitHub Copilot CLI" ]
   spec.email = [ "noreply@github.com" ]
 

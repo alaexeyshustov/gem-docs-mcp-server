@@ -37,7 +37,7 @@ module GemDocs
       return render_help(out) if arguments.empty? || HELP_FLAGS.include?(arguments.first)
 
       command_class = COMMANDS[arguments.first]
-      return render_unknown_command(arguments.first, out: out, err: err) unless command_class
+      return render_unknown_command(arguments.first, err: err) unless command_class
 
       command_class.new(out: out, err: err).call(arguments.drop(1))
     end
@@ -47,7 +47,7 @@ module GemDocs
       0
     end
 
-    def render_unknown_command(command_name, out:, err:)
+    def render_unknown_command(command_name, err:)
       err.puts "Unknown command: #{command_name}"
       1
     end
