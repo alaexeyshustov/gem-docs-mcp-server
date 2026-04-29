@@ -23,6 +23,14 @@ RSpec.describe "executables" do
     expect("#{stdout}\n#{stderr}").to include("gem-docs-server")
   end
 
+  it "routes the CLI server command through the MCP server loader" do
+    stdout, stderr, status = run_command("ruby", "-Ilib", "exe/gem-docs", "server")
+
+    expect(status).to be_success
+    expect(stderr).to eq("")
+    expect(stdout).to include("gem-docs-server placeholder loaded")
+  end
+
   it "keeps fast-mcp isolated from the default CLI load path" do
     stdout, stderr, status = run_command("ruby", "-Ilib", "-e", "require 'gem_docs'; puts $LOADED_FEATURES.grep(/fast_mcp/).empty?")
 
