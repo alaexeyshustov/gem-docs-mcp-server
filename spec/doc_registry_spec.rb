@@ -118,8 +118,11 @@ RSpec.describe GemDocs::DocRegistry do
     it "falls back to ri data when a gem has no .yardoc cache" do
       with_source_fixture_gem("rdoc_only", source: "# intentionally empty\n") do |spec|
         FileUtils.mkdir_p(spec.doc_dir)
+        commands = []
 
         shell_runner = lambda do |command|
+          commands << command
+
           case command.last
           when "-l"
             { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
@@ -138,8 +141,61 @@ RSpec.describe GemDocs::DocRegistry do
         object = registry.find_object("RdocOnly::Widget#call", gem_name: "rdoc_only")
 
         expect(loaded_gem.doc_source).to eq(:rdoc)
+        expect(commands.count { |command| command.last == "RdocOnly::Widget" }).to eq(0)
         expect(object&.doc_source).to eq(:rdoc)
         expect(object&.docstring).to include("Calls through ri.")
+      end
+    end
+
+    it "caches missing ri lookups so they do not rerun external commands" do
+      with_source_fixture_gem("rdoc_cache", source: "# intentionally empty\n") do |spec|
+        FileUtils.mkdir_p(spec.doc_dir)
+        lookup_count = 0
+
+        shell_runner = lambda do |command|
+          case command.last
+          when "-l"
+            { stdout: "RdocCache::Widget\n", stderr: "", success: true }
+          when "RdocCache::Widget#missing"
+            lookup_count += 1
+            { stdout: "", stderr: "Not found", success: false }
+          else
+            { stdout: "class RdocCache::Widget\n", stderr: "", success: true }
+          end
+        end
+
+        registry = described_class.new(shell_runner: shell_runner)
+
+        2.times do
+          expect(registry.find_object("RdocCache::Widget#missing", gem_name: "rdoc_cache")).to be_nil
+        end
+
+        expect(lookup_count).to eq(1)
+      end
+    end
+
+    it "falls back to source parsing when ri cannot be executed" do
+      with_source_fixture_gem("ri_missing", source: <<~RUBY) do |spec|
+        module RiMissing
+          class Widget
+            def call
+            end
+          end
+        end
+      RUBY
+        FileUtils.mkdir_p(spec.doc_dir)
+
+        registry = described_class.new(
+          shell_runner: lambda do |_command|
+            raise Errno::ENOENT, "ri"
+          end
+        )
+
+        loaded_gem = registry.load_gem("ri_missing")
+
+        expect(loaded_gem.doc_source).to eq(:source_only)
+        expect(registry.find_object("RiMissing::Widget#call", gem_name: "ri_missing")&.signature)
+          .to eq("RiMissing::Widget#call()")
       end
     end
 
@@ -216,6 +272,54 @@ RSpec.describe GemDocs::DocRegistry do
         expect(constant_object&.kind).to eq(:constant)
       end
     end
+
+    it "treats methods inside class << self as class methods" do
+      with_source_fixture_gem("singleton_fixture", source: <<~RUBY) do
+        module SingletonFixture
+          class Widget
+            class << self
+              def build(name)
+              end
+            end
+          end
+        end
+      RUBY
+        registry = described_class.new
+
+        object = registry.find_object("SingletonFixture::Widget.build", gem_name: "singleton_fixture")
+
+        expect(object&.kind).to eq(:class_method)
+        expect(object&.signature).to eq("SingletonFixture::Widget.build(name)")
+      end
+    end
+
+    it "passes ri object lookups after an end-of-options marker" do
+      with_source_fixture_gem("rdoc_flags", source: "# intentionally empty\n") do |spec|
+        FileUtils.mkdir_p(spec.doc_dir)
+        commands = []
+
+        shell_runner = lambda do |command|
+          commands << command
+
+          case command.last
+          when "-l"
+            { stdout: "Flagged::Widget\n", stderr: "", success: true }
+          when "-Flagged"
+            { stdout: "class -Flagged\n", stderr: "", success: true }
+          else
+            { stdout: "", stderr: "Not found", success: false }
+          end
+        end
+
+        registry = described_class.new(shell_runner: shell_runner)
+
+        registry.find_object("-Flagged", gem_name: "rdoc_flags")
+
+        lookup_command = commands.find { |command| command.last == "-Flagged" }
+        expect(lookup_command).to include("--")
+        expect(lookup_command.index("--")).to be < lookup_command.index("-Flagged")
+      end
+    end
   end
 
   describe "#classes_for" do
@@ -242,6 +346,15 @@ RSpec.describe GemDocs::DocRegistry do
         ])
         expect(classes.map(&:kind)).to eq([ :module, :module, :class ])
       end
+    end
+  end
+
+  describe "private helpers" do
+    it "returns a failed response when a command is unavailable" do
+      response = described_class.new.send(:run_command, [ "missing-ri-command" ])
+
+      expect(response[:success]).to eq(false)
+      expect(response[:error]).to be_a(Errno::ENOENT)
     end
   end
 end

@@ -26,27 +26,67 @@ module GemDocs
     end
 
     class LoadedGem
+      MISSING = Object.new
+      private_constant :MISSING
+
       attr_reader :name, :version, :summary, :path, :doc_source, :objects
 
-      def initialize(name:, version:, summary:, path:, doc_source:, objects:, dynamic_lookup: nil)
+      def initialize(name:, version:, summary:, path:, doc_source:, objects:, dynamic_lookup: nil, lazy_paths: [])
         @name = name
         @version = version
         @summary = summary
         @path = path
         @doc_source = doc_source
-        @objects = objects.freeze
+        @objects = objects.dup
         @dynamic_lookup = dynamic_lookup
+        @lazy_paths = lazy_paths.each_with_object({}) do |lazy_path, pending|
+          pending[lazy_path] = true
+        end
         @object_map = objects.each_with_object({}) do |object, map|
           map[object.path] = object
         end
       end
 
       def find(path)
-        @object_map[path] ||= @dynamic_lookup&.call(path)
+        cached = @object_map[path]
+        return nil if cached.equal?(MISSING)
+
+        if @lazy_paths.delete(path)
+          return cache_lookup(path, @dynamic_lookup&.call(path), fallback: cached)
+        end
+
+        return cached if cached
+
+        cache_lookup(path, @dynamic_lookup&.call(path))
       end
 
       def classes
-        objects.select(&:class_or_module?)
+        @lazy_paths.keys.each { |path| find(path) }
+        @objects.select(&:class_or_module?)
+      end
+
+      private
+
+      def cache_lookup(path, result, fallback: nil)
+        cached = result || fallback || MISSING
+        @object_map[path] = cached
+
+        if cached.equal?(MISSING)
+          nil
+        else
+          replace_object(path, cached)
+          cached
+        end
+      end
+
+      def replace_object(path, object)
+        index = @objects.index { |existing| existing.path == path }
+
+        if index
+          @objects[index] = object
+        else
+          @objects << object
+        end
       end
     end
 
@@ -102,7 +142,8 @@ module GemDocs
           path: spec.full_gem_path,
           doc_source: :rdoc,
           objects: rdoc_objects,
-          dynamic_lookup: ->(path) { load_rdoc_object(spec, path) }
+          dynamic_lookup: ->(path) { load_rdoc_object(spec, path) },
+          lazy_paths: rdoc_objects.map(&:path)
         )
       else
         objects = load_source_objects(spec)
@@ -156,35 +197,27 @@ module GemDocs
     def load_rdoc_objects(spec)
       return unless File.directory?(spec.doc_dir)
 
-      response = run_shell(*ri_command(spec, "-l"))
+      response = run_shell(*ri_list_command(spec))
+      return if command_execution_failed?(response)
+
       raise GemDocs::RegistryError.new("Failed to load ri registry: #{response[:stderr]}") unless response[:success]
 
       names = response[:stdout].lines.map(&:strip).reject(&:empty?)
       return if names.empty?
 
-      names.filter_map do |name|
-        load_rdoc_namespace(spec, name)
+      names.map do |name|
+        build_rdoc_index_entry(name)
       end
     end
 
-    def load_rdoc_namespace(spec, name)
-      response = run_shell(*ri_command(spec, name))
-      return unless response[:success]
-
-      signature, docstring = parse_rdoc_output(response[:stdout])
-      kind = if signature.start_with?("module ")
-        :module
-      else
-        :class
-      end
-
+    def build_rdoc_index_entry(name)
       Entry.new(
         path: name,
         name: name.split("::").last,
-        kind: kind,
+        kind: :class,
         visibility: :public,
-        docstring: docstring,
-        signature: signature.empty? ? name : signature,
+        docstring: "",
+        signature: name,
         source_location: nil,
         superclass: nil,
         doc_source: :rdoc
@@ -199,7 +232,7 @@ module GemDocs
       Entry.new(
         path: path,
         name: path.split(/[#.]/).last,
-        kind: rdoc_kind_for(path),
+        kind: rdoc_kind_for(path, signature),
         visibility: :public,
         docstring: docstring,
         signature: signature.empty? ? path : signature,
@@ -265,11 +298,11 @@ module GemDocs
 
     def parse_source_file(file)
       result = Prism.parse_file(file)
-      stack = [ [ result.value, nil ] ]
+      stack = [ [ result.value, nil, false ] ]
       objects = []
 
       until stack.empty?
-        node, namespace_path = stack.pop
+        node, namespace_path, class_method_context = stack.pop
 
         case node
         when Prism::ClassNode
@@ -291,10 +324,15 @@ module GemDocs
             line: node.location.start_line
           )
           push_children(stack, node, module_path)
+        when Prism::SingletonClassNode
+          next unless node.expression.is_a?(Prism::SelfNode)
+
+          push_children(stack, node, namespace_path, true)
         when Prism::DefNode
           next unless namespace_path
 
-          method_path = if node.receiver.is_a?(Prism::SelfNode)
+          class_method = class_method_context || node.receiver.is_a?(Prism::SelfNode)
+          method_path = if class_method
             "#{namespace_path}.#{node.name}"
           else
             "#{namespace_path}##{node.name}"
@@ -302,10 +340,10 @@ module GemDocs
           objects << Entry.new(
             path: method_path,
             name: node.name.to_s,
-            kind: node.receiver.is_a?(Prism::SelfNode) ? :class_method : :instance_method,
+            kind: class_method ? :class_method : :instance_method,
             visibility: :public,
             docstring: "",
-            signature: build_method_signature(namespace_path, node),
+            signature: build_method_signature(namespace_path, node, class_method: class_method),
             source_location: format_source_location(file, node.location.start_line),
             superclass: nil,
             doc_source: :source_only
@@ -324,7 +362,7 @@ module GemDocs
             doc_source: :source_only
           )
         else
-          push_children(stack, node, namespace_path)
+          push_children(stack, node, namespace_path, class_method_context)
         end
       end
 
@@ -345,8 +383,8 @@ module GemDocs
       )
     end
 
-    def build_method_signature(namespace_path, node)
-      receiver_separator = node.receiver.is_a?(Prism::SelfNode) ? "." : "#"
+    def build_method_signature(namespace_path, node, class_method:)
+      receiver_separator = class_method ? "." : "#"
       parameter_list = format_parameter_list(node.parameters&.signature || [])
       "#{namespace_path}#{receiver_separator}#{node.name}(#{parameter_list.join(', ')})"
     end
@@ -421,32 +459,45 @@ module GemDocs
       [ signature, Array(doc_lines).join("\n").strip ]
     end
 
-    def rdoc_kind_for(path)
+    def rdoc_kind_for(path, signature)
       return :instance_method if path.include?("#")
       return :class_method if path.match?(/\.[A-Za-z_]/)
       return :constant if path.split("::").last == path.split("::").last.upcase
+      return :module if signature.start_with?("module ")
 
       :class
     end
 
+    def ri_list_command(spec)
+      [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "-l" ]
+    end
+
     def ri_command(spec, *arguments)
-      [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, *arguments ]
+      [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "--", *arguments ]
     end
 
     def run_shell(*command)
       @shell_runner.call(command)
+    rescue SystemCallError => e
+      { stdout: "", stderr: e.message, success: false, error: e }
     end
 
     def run_command(command)
       stdout, stderr, status = Open3.capture3(*command)
       { stdout: stdout, stderr: stderr, success: status.success? }
+    rescue SystemCallError => e
+      { stdout: "", stderr: e.message, success: false, error: e }
     end
 
-    def push_children(stack, node, namespace_path)
+    def command_execution_failed?(response)
+      response[:error].is_a?(SystemCallError)
+    end
+
+    def push_children(stack, node, namespace_path, class_method_context = false)
       return unless node.respond_to?(:compact_child_nodes)
 
       node.compact_child_nodes.reverse_each do |child|
-        stack << [ child, namespace_path ]
+        stack << [ child, namespace_path, class_method_context ]
       end
     end
 
