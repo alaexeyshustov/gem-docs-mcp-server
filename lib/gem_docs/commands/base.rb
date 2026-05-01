@@ -1,18 +1,13 @@
 # frozen_string_literal: true
 
+require "dry/cli"
+
 module GemDocs
   module Commands
-    class Base
-      attr_reader :out, :err
-
-      def initialize(out:, err:)
-        @out = out
-        @err = err
-      end
-
+    class Base < Dry::CLI::Command
       def placeholder(command_name)
         out.puts "#{command_name} is not implemented yet."
-        0
+        exit(0)
       end
     end
   end

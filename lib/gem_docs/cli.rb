@@ -1,54 +1,45 @@
 # frozen_string_literal: true
 
+require "dry/cli"
+
 module GemDocs
   module CLI
     HELP_FLAGS = [ "-h", "--help", "help" ].freeze
-    HELP_TEXT = <<~HELP.freeze
-      gem-docs — CLI-first local gem documentation
-
-      Usage:
-        gem-docs <command> [options]
-
-      Commands:
-        list
-        summary
-        classes
-        lookup
-        search
-        context
-        server
-    HELP
-
-    COMMANDS = {
-      "list" => "List",
-      "summary" => "Summary",
+    COMMAND_REGISTRATIONS = {
       "classes" => "Classes",
+      "context" => "Context",
+      "list" => "List",
       "lookup" => "Lookup",
       "search" => "Search",
-      "context" => "Context",
-      "server" => "Server"
+      "server" => "Server",
+      "summary" => "Summary"
     }.freeze
+    private_constant :COMMAND_REGISTRATIONS
 
     module_function
 
     def start(arguments, out: $stdout, err: $stderr)
       return render_help(out) if arguments.empty? || HELP_FLAGS.include?(arguments.first)
 
-      command_name = COMMANDS[arguments.first]
-      return render_unknown_command(arguments.first, err: err) unless command_name
-
-      command_class = GemDocs::Commands.const_get(command_name, false)
-      command_class.new(out: out, err: err).call(arguments.drop(1))
+      Dry::CLI.new(build_registry).call(arguments: arguments, out: out, err: err) || 0
+    rescue SystemExit => e
+      e.status
     end
 
     def render_help(out)
-      out.puts HELP_TEXT
+      out.puts Dry::CLI::Usage.call(build_registry.get([]))
       0
     end
 
-    def render_unknown_command(command_name, err:)
-      err.puts "Unknown command: #{command_name}"
-      1
+    def build_registry
+      Module.new do
+        extend Dry::CLI::Registry
+      end.tap do |registry|
+        COMMAND_REGISTRATIONS.each do |command_name, constant_name|
+          registry.register(command_name, GemDocs::Commands.const_get(constant_name, false))
+        end
+      end
     end
+    private_class_method :build_registry
   end
 end

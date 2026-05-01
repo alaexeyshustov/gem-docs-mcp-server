@@ -3,7 +3,9 @@
 module GemDocs
   module Commands
     class Context < Base
-      def call(_arguments = [])
+      desc "Show project gem context"
+
+      def call(**)
         placeholder("context")
       end
     end

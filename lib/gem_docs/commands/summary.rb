@@ -3,7 +3,9 @@
 module GemDocs
   module Commands
     class Summary < Base
-      def call(_arguments = [])
+      desc "Summarize a gem"
+
+      def call(**)
         placeholder("summary")
       end
     end

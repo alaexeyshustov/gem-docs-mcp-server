@@ -3,10 +3,13 @@
 module GemDocs
   module Commands
     class Server < Base
-      def call(arguments = [])
+      desc "Start the MCP server"
+      argument :args, type: :array
+
+      def call(args: [], **)
         require "gem_docs/mcp/server"
 
-        GemDocs::MCP::Server.start(arguments, out: out, err: err)
+        exit GemDocs::MCP::Server.start(args, out: out, err: err)
       end
     end
   end

@@ -3,7 +3,9 @@
 module GemDocs
   module Commands
     class Search < Base
-      def call(_arguments = [])
+      desc "Search gem documentation"
+
+      def call(**)
         placeholder("search")
       end
     end
