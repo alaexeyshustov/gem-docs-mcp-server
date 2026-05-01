@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "gem_docs/commands"
-
 module GemDocs
   module CLI
     HELP_FLAGS = [ "-h", "--help", "help" ].freeze
@@ -22,13 +20,13 @@ module GemDocs
     HELP
 
     COMMANDS = {
-      "list" => GemDocs::Commands::List,
-      "summary" => GemDocs::Commands::Summary,
-      "classes" => GemDocs::Commands::Classes,
-      "lookup" => GemDocs::Commands::Lookup,
-      "search" => GemDocs::Commands::Search,
-      "context" => GemDocs::Commands::Context,
-      "server" => GemDocs::Commands::Server
+      "list" => "List",
+      "summary" => "Summary",
+      "classes" => "Classes",
+      "lookup" => "Lookup",
+      "search" => "Search",
+      "context" => "Context",
+      "server" => "Server"
     }.freeze
 
     module_function
@@ -36,9 +34,10 @@ module GemDocs
     def start(arguments, out: $stdout, err: $stderr)
       return render_help(out) if arguments.empty? || HELP_FLAGS.include?(arguments.first)
 
-      command_class = COMMANDS[arguments.first]
-      return render_unknown_command(arguments.first, err: err) unless command_class
+      command_name = COMMANDS[arguments.first]
+      return render_unknown_command(arguments.first, err: err) unless command_name
 
+      command_class = GemDocs::Commands.const_get(command_name, false)
       command_class.new(out: out, err: err).call(arguments.drop(1))
     end
 
