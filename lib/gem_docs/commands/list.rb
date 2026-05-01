@@ -3,7 +3,9 @@
 module GemDocs
   module Commands
     class List < Base
-      def call(_arguments = [])
+      desc "Show installed gems"
+
+      def call(**)
         placeholder("list")
       end
     end

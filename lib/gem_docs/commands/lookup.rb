@@ -3,7 +3,9 @@
 module GemDocs
   module Commands
     class Lookup < Base
-      def call(_arguments = [])
+      desc "Look up a constant or method"
+
+      def call(**)
         placeholder("lookup")
       end
     end

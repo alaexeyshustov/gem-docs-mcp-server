@@ -3,7 +3,9 @@
 module GemDocs
   module Commands
     class Classes < Base
-      def call(_arguments = [])
+      desc "List documented classes"
+
+      def call(**)
         placeholder("classes")
       end
     end
