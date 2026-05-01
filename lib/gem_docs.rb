@@ -1,9 +1,13 @@
 # frozen_string_literal: true
 
-require "gem_docs/version"
-require "gem_docs/cli"
-require "gem_docs/formatters"
-require "gem_docs/mcp"
+require "zeitwerk"
+
+loader = Zeitwerk::Loader.for_gem
+loader.inflector.inflect(
+  "cli" => "CLI",
+  "mcp" => "MCP"
+)
+loader.setup
 
 module GemDocs
 end
