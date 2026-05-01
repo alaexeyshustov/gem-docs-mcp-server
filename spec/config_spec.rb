@@ -50,4 +50,45 @@ RSpec.describe GemDocs::Config do
       )
     end
   end
+
+  it "preserves defaults when optional sections are present but empty" do
+    Dir.mktmpdir do |tmpdir|
+      File.write(
+        File.join(tmpdir, ".gem-docs.yml"),
+        <<~YAML
+          gems:
+          doc_fallback:
+        YAML
+      )
+
+      config = GemDocs.config(root: tmpdir)
+
+      expect(config.exclude_gems).to eq([])
+      expect(config.use_rdoc?).to be(true)
+      expect(config.use_source_prism?).to be(true)
+    end
+  end
+
+  it "raises a shared configuration error for malformed YAML" do
+    Dir.mktmpdir do |tmpdir|
+      File.write(File.join(tmpdir, ".gem-docs.yml"), "gems: [broken\n")
+
+      expect { GemDocs.config(root: tmpdir) }
+        .to raise_error(GemDocs::ConfigurationError, /Invalid configuration/)
+    end
+  end
+
+  it "raises a shared configuration error for invalid section types" do
+    Dir.mktmpdir do |tmpdir|
+      File.write(
+        File.join(tmpdir, ".gem-docs.yml"),
+        <<~YAML
+          gems: unexpected
+        YAML
+      )
+
+      expect { GemDocs.config(root: tmpdir) }
+        .to raise_error(GemDocs::ConfigurationError, /gems must be a mapping/)
+    end
+  end
 end

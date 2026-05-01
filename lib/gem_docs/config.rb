@@ -5,6 +5,7 @@ require "yaml"
 module GemDocs
   class Config
     FILE_NAME = ".gem-docs.yml"
+    VALID_COLORS = %w[auto always never].freeze
     DEFAULTS = {
       gems: {
         exclude: []
@@ -66,7 +67,16 @@ module GemDocs
         path = File.join(root, FILE_NAME)
         return {} unless File.exist?(path)
 
-        normalize_hash(YAML.safe_load(File.read(path), aliases: false) || {})
+        raw_config = YAML.safe_load(File.read(path), aliases: false) || {}
+        unless raw_config.is_a?(Hash)
+          raise GemDocs::ConfigurationError.new("#{path} must contain a YAML mapping")
+        end
+
+        normalized_config = normalize_hash(raw_config)
+        validate_overrides!(normalized_config, path)
+        normalized_config
+      rescue Psych::SyntaxError => e
+        raise GemDocs::ConfigurationError.new("Invalid configuration in #{path}: #{e.message}")
       end
 
       def normalize_hash(value)
@@ -84,12 +94,53 @@ module GemDocs
 
       def deep_merge(base, overrides)
         base.merge(overrides) do |_key, base_value, override_value|
-          if base_value.is_a?(Hash) && override_value.is_a?(Hash)
+          if override_value.nil?
+            base_value
+          elsif base_value.is_a?(Hash) && override_value.is_a?(Hash)
             deep_merge(base_value, override_value)
           else
             override_value
           end
         end
+      end
+
+      def validate_overrides!(overrides, path)
+        validate_section_hash!(overrides, :gems, path)
+        validate_section_hash!(overrides, :doc_fallback, path)
+        validate_section_hash!(overrides, :output, path)
+
+        validate_array!(overrides.dig(:gems, :exclude), "#{path} gems.exclude") if overrides.dig(:gems, :exclude)
+        validate_boolean!(overrides.dig(:doc_fallback, :use_rdoc), "#{path} doc_fallback.use_rdoc") if overrides.dig(:doc_fallback, :use_rdoc) != nil
+        validate_boolean!(overrides.dig(:doc_fallback, :use_source_prism), "#{path} doc_fallback.use_source_prism") if overrides.dig(:doc_fallback, :use_source_prism) != nil
+
+        return unless overrides.dig(:output, :color)
+
+        validate_color!(overrides.dig(:output, :color), "#{path} output.color")
+      end
+
+      def validate_section_hash!(overrides, section, path)
+        value = overrides[section]
+        return if value.nil? || value.is_a?(Hash)
+
+        raise GemDocs::ConfigurationError.new("#{path} #{section} must be a mapping")
+      end
+
+      def validate_array!(value, location)
+        return if value.is_a?(Array)
+
+        raise GemDocs::ConfigurationError.new("#{location} must be an array")
+      end
+
+      def validate_boolean!(value, location)
+        return if value == true || value == false
+
+        raise GemDocs::ConfigurationError.new("#{location} must be true or false")
+      end
+
+      def validate_color!(value, location)
+        return if VALID_COLORS.include?(value)
+
+        raise GemDocs::ConfigurationError.new("#{location} must be one of: #{VALID_COLORS.join(', ')}")
       end
 
       def deep_freeze(value)
