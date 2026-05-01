@@ -65,8 +65,6 @@ module GemDocs
 
       def load_overrides(root)
         path = File.join(root, FILE_NAME)
-        return {} unless File.exist?(path)
-
         raw_config = YAML.safe_load(File.read(path), aliases: false) || {}
         unless raw_config.is_a?(Hash)
           raise GemDocs::ConfigurationError.new("#{path} must contain a YAML mapping")
@@ -75,6 +73,8 @@ module GemDocs
         normalized_config = normalize_hash(raw_config)
         validate_overrides!(normalized_config, path)
         normalized_config
+      rescue Errno::ENOENT
+        {}
       rescue Psych::SyntaxError => e
         raise GemDocs::ConfigurationError.new("Invalid configuration in #{path}: #{e.message}")
       end

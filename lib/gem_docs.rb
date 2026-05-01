@@ -16,7 +16,11 @@ module GemDocs
   module_function
 
   def config(root: Dir.pwd)
-    expanded_root = File.exist?(root) ? File.realpath(root) : File.expand_path(root)
+    expanded_root = begin
+      File.realpath(root)
+    rescue Errno::ENOENT, Errno::ELOOP, Errno::ENAMETOOLONG
+      File.expand_path(root)
+    end
 
     CONFIG_CACHE_MUTEX.synchronize do
       @config_cache ||= {}
