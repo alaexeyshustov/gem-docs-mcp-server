@@ -13,6 +13,7 @@ RSpec.describe "bootstrap structure" do
       lib/gem_docs.rb
       lib/gem_docs/cli.rb
       lib/gem_docs/version.rb
+      lib/gem_docs/doc_registry.rb
       lib/gem_docs/commands.rb
       lib/gem_docs/commands/list.rb
       lib/gem_docs/commands/summary.rb
