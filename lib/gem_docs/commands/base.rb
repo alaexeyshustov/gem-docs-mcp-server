@@ -7,7 +7,7 @@ module GemDocs
     class Base < Dry::CLI::Command
       def placeholder(command_name)
         out.puts "#{command_name} is not implemented yet."
-        exit(0)
+        0
       end
     end
   end

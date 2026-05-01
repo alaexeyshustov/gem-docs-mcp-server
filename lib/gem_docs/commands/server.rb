@@ -9,7 +9,7 @@ module GemDocs
       def call(args: [], **)
         require "gem_docs/mcp/server"
 
-        exit GemDocs::MCP::Server.start(args, out: out, err: err)
+        GemDocs::MCP::Server.start(args, out: out, err: err)
       end
     end
   end
