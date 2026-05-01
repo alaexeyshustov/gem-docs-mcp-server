@@ -55,7 +55,13 @@ module GemDocs
         example command_class.examples if command_class.examples.any?
 
         define_method(:call) do |**kwargs|
-          throw(COMMAND_STATUS_TAG, super(**kwargs))
+          status = begin
+            super(**kwargs)
+          rescue GemDocs::Error => e
+            render_command_error(e, format: kwargs.fetch(:format, "text"))
+          end
+
+          throw(COMMAND_STATUS_TAG, status)
         end
       end
     end
