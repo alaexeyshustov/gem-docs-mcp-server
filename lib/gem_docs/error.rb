@@ -14,9 +14,9 @@ module GemDocs
     end
 
     def to_h
-      { error: error_code, message: message }.tap do |payload|
-        payload[:details] = details unless details.empty?
-      end
+      return { error: error_code, message: message } if details.empty?
+
+      { error: error_code, message: message, details: details }
     end
   end
 end

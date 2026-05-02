@@ -5,7 +5,7 @@ module GemDocs
     class List < Base
       desc "Show installed gems"
 
-      def call(**)
+      def call(**_kwargs)
         placeholder("list")
       end
     end

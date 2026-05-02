@@ -1,7 +1,4 @@
 module Gem
-  class LoadError < StandardError
-  end
-
   class Version
     def to_s: -> String
   end

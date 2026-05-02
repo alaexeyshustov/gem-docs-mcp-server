@@ -5,7 +5,7 @@ module GemDocs
     class Context < Base
       desc "Show project gem context"
 
-      def call(**)
+      def call(**_kwargs)
         placeholder("context")
       end
     end

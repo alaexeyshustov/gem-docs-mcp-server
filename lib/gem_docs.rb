@@ -23,14 +23,14 @@ module GemDocs
     end
 
     CONFIG_CACHE_MUTEX.synchronize do
-      @config_cache ||= {}
+      @config_cache ||= Hash.new
       @config_cache[expanded_root] ||= Config.load(root: expanded_root)
     end
   end
 
   def reset_config_cache!
     CONFIG_CACHE_MUTEX.synchronize do
-      @config_cache = {}
+      @config_cache = Hash.new
     end
   end
 end

@@ -5,7 +5,7 @@ module GemDocs
     class Lookup < Base
       desc "Look up a constant or method"
 
-      def call(**)
+      def call(**_kwargs)
         placeholder("lookup")
       end
     end

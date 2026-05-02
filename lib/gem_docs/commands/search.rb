@@ -5,7 +5,7 @@ module GemDocs
     class Search < Base
       desc "Search gem documentation"
 
-      def call(**)
+      def call(**_kwargs)
         placeholder("search")
       end
     end

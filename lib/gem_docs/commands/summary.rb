@@ -5,7 +5,7 @@ module GemDocs
     class Summary < Base
       desc "Summarize a gem"
 
-      def call(**)
+      def call(**_kwargs)
         placeholder("summary")
       end
     end

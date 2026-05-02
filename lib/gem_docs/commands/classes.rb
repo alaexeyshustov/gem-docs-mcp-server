@@ -5,7 +5,7 @@ module GemDocs
     class Classes < Base
       desc "List documented classes"
 
-      def call(**)
+      def call(**_kwargs)
         placeholder("classes")
       end
     end

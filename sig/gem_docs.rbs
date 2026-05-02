@@ -1,5 +1,6 @@
 module GemDocs
   VERSION: String
+  CONFIG_CACHE_MUTEX: Mutex
 
   type config_hash = {
     gems: { exclude: Array[untyped] },
@@ -17,6 +18,8 @@ module GemDocs
   type entry_kind = :class | :module | :instance_method | :class_method | :constant
   type doc_source = :yard | :rdoc | :source_only | :none
 
+  def config: (?root: String) -> Config
+  def reset_config_cache!: -> void
   def self.config: (?root: String) -> Config
   def self.reset_config_cache!: -> void
 
@@ -54,7 +57,7 @@ module GemDocs
 
     def initialize: (String message, ?details: Hash[Symbol, untyped]) -> void
     def error_code: -> String
-    def to_h: -> { error: String, message: String, ?details: Hash[Symbol, untyped] }
+    def to_h: -> Hash[Symbol, untyped]
   end
 
   class GemNotFound < Error
@@ -184,6 +187,7 @@ module GemDocs
   end
 
   module Formatters
+    def for: (String | Symbol format) -> Base
     def self.for: (String | Symbol format) -> Base
 
     class Base

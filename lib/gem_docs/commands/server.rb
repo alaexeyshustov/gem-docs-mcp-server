@@ -6,7 +6,7 @@ module GemDocs
       desc "Start the MCP server"
       argument :args, type: :array
 
-      def call(args: [], **)
+      def call(args: [], **_kwargs)
         require "gem_docs/mcp/server"
 
         GemDocs::MCP::Server.start(args, out: out, err: err)
