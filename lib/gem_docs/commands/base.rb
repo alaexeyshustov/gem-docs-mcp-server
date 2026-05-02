@@ -27,9 +27,7 @@ module GemDocs
       end
 
       def formatted_error(error, format:)
-        return error.message unless format == "json"
-
-        GemDocs::Formatters::Json.new.call(error.to_h)
+        GemDocs::Formatters.for(format).error(error.to_h)
       end
     end
   end
