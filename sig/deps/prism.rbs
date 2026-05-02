@@ -1,0 +1,53 @@
+module Prism
+  def self.parse_file: (String file) -> ParseResult
+
+  class ParseResult
+    attr_reader value: Node
+  end
+
+  class Node
+    def compact_child_nodes: -> Array[Node]
+  end
+
+  class SelfNode < Node
+  end
+
+  class ConstantPathNode < Node
+    def slice: -> String
+  end
+
+  class Location
+    attr_reader start_line: Integer
+  end
+
+  class Parameters
+    def signature: -> Array[[Symbol, Symbol]]
+  end
+
+  class ClassNode < Node
+    attr_reader constant_path: ConstantPathNode
+    attr_reader location: Location
+    attr_reader superclass: ConstantPathNode?
+  end
+
+  class ModuleNode < Node
+    attr_reader constant_path: ConstantPathNode
+    attr_reader location: Location
+  end
+
+  class SingletonClassNode < Node
+    attr_reader expression: Node
+  end
+
+  class DefNode < Node
+    attr_reader receiver: Node?
+    attr_reader name: Symbol
+    attr_reader parameters: Parameters?
+    attr_reader location: Location
+  end
+
+  class ConstantWriteNode < Node
+    attr_reader name: Symbol
+    attr_reader location: Location
+  end
+end

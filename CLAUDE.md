@@ -1,13 +1,9 @@
 # Agent Instructions
 
-## Build, test, and lint
-
-- `bundle exec rspec`
-- `bundle exec rspec spec/doc_registry_spec.rb`
-- `bundle exec rspec spec/doc_registry_spec.rb:74`
-- `bundle exec rubocop`
-- `ruby -Ilib exe/gem-docs --help`
-- `ruby -Ilib exe/gem-docs-server`
+- Use TDD for new features and refactoring. Always run `bundle exec rspec` after making changes.
+- Use Rubocop omakase style. Run `bundle exec rubocop -a` after editing Ruby files
+- Use rbs signatures and Steep for type checking. Run `bundle exec steep check` after editing Ruby files.
+- Testing Framework: RSpec, FactoryBot, VCR.
 
 ## High-level architecture
 

@@ -1,0 +1,28 @@
+module Dry
+  class CLI
+    def initialize: (untyped registry) -> void
+    def call: (arguments: Array[String], out: untyped, err: untyped) -> void
+  end
+
+  module CLI::Registry
+    def register: (String name, singleton(Dry::CLI::Command) command) -> void
+    def get: (Array[String] path) -> untyped
+  end
+
+  module CLI::Usage
+    def self.call: (untyped command) -> String
+  end
+
+  class CLI::Command
+    def self.desc: (String description) -> void
+    def self.example: (Array[String] examples) -> void
+    def self.argument: (Symbol name, type: Symbol) -> void
+    def self.option: (Symbol name, values: Array[String], default: String, desc: String) -> void
+    def self.description: -> String?
+    def self.examples: -> Array[String]
+
+    def initialize: (?out: untyped, ?err: untyped) -> void
+    def out: -> untyped
+    def err: -> untyped
+  end
+end

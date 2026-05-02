@@ -1,0 +1,48 @@
+module YARD
+  def self.parse: (String file) -> void
+
+  module Registry
+    def self.yardoc_file: -> String?
+    def self.yardoc_file=: (String?) -> String?
+    def self.clear: -> void
+    def self.load!: (String yardoc) -> void
+    def self.root: -> CodeObjects::NamespaceObject
+    def self.save: (bool merge, String yardoc) -> void
+  end
+
+  module CodeObjects
+    class Docstring
+      def to_s: -> String
+    end
+
+    class BaseObject
+      attr_reader path: String
+      attr_reader name: Symbol
+      attr_reader visibility: Symbol?
+      attr_reader docstring: Docstring
+      attr_reader file: String?
+      attr_reader line: Integer?
+    end
+
+    class NamespaceObject < BaseObject
+      def children: -> Array[BaseObject]
+      def constants: (inherited: bool) -> Array[ConstantObject]
+      def meths: (inherited: bool) -> Array[MethodObject]
+    end
+
+    class ClassObject < NamespaceObject
+      attr_reader superclass: untyped
+    end
+
+    class ModuleObject < NamespaceObject
+    end
+
+    class MethodObject < BaseObject
+      attr_reader scope: Symbol
+      attr_reader signature: String?
+    end
+
+    class ConstantObject < BaseObject
+    end
+  end
+end

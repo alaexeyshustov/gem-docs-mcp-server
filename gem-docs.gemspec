@@ -22,7 +22,7 @@ Gem::Specification.new do |spec|
   }
 
   spec.files = Dir.chdir(__dir__) do
-    Dir["Gemfile", "README.md", "exe/*", "lib/**/*.rb", "spec/**/*.rb"]
+    Dir["Gemfile", "README.md", "Steepfile", "exe/*", "lib/**/*.rb", "sig/**/*.rbs", "spec/**/*.rb"]
   end
   spec.bindir = "exe"
   spec.executables = [ "gem-docs", "gem-docs-server" ]

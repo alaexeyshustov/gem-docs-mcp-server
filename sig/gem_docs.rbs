@@ -1,0 +1,316 @@
+module GemDocs
+  VERSION: String
+
+  type config_hash = {
+    gems: { exclude: Array[untyped] },
+    doc_fallback: { use_rdoc: bool, use_source_prism: bool },
+    output: { color: String }
+  }
+
+  type command_response = {
+    stdout: String,
+    stderr: String,
+    success: bool,
+    ?error: SystemCallError
+  }
+
+  type entry_kind = :class | :module | :instance_method | :class_method | :constant
+  type doc_source = :yard | :rdoc | :source_only | :none
+
+  def self.config: (?root: String) -> Config
+  def self.reset_config_cache!: -> void
+
+  class Config
+    FILE_NAME: String
+    VALID_COLORS: Array[String]
+    DEFAULTS: config_hash
+
+    def self.load: (?root: String) -> Config
+    def self.deep_dup: (untyped value) -> untyped
+
+    def initialize: (config_hash | Hash[Symbol, untyped] values) -> void
+    def to_h: -> (config_hash | Hash[Symbol, untyped])
+    def exclude_gems: -> Array[untyped]
+    def use_rdoc?: -> bool
+    def use_source_prism?: -> bool
+    def output_color: -> String
+
+    private
+
+    def deep_freeze: (untyped value) -> untyped
+    def self.load_overrides: (String root) -> Hash[Symbol, untyped]
+    def self.normalize_hash: (untyped value) -> untyped
+    def self.deep_merge: (Hash[Symbol, untyped] base, Hash[Symbol, untyped] overrides) -> Hash[Symbol, untyped]
+    def self.validate_overrides!: (Hash[Symbol, untyped] overrides, String path) -> void
+    def self.validate_section_hash!: (Hash[Symbol, untyped] overrides, Symbol section, String path) -> void
+    def self.validate_array!: (untyped value, String location) -> void
+    def self.validate_boolean!: (untyped value, String location) -> void
+    def self.validate_color!: (String value, String location) -> void
+    def self.deep_freeze: (untyped value) -> untyped
+  end
+
+  class Error < StandardError
+    attr_reader details: Hash[Symbol, untyped]
+
+    def initialize: (String message, ?details: Hash[Symbol, untyped]) -> void
+    def error_code: -> String
+    def to_h: -> { error: String, message: String, ?details: Hash[Symbol, untyped] }
+  end
+
+  class GemNotFound < Error
+    def initialize: (String gem_name, ?message: String?, ?details: Hash[Symbol, untyped]) -> void
+    def error_code: -> String
+  end
+
+  class DocUnavailable < Error
+    def initialize: (String subject, ?message: String?, ?details: Hash[Symbol, untyped]) -> void
+    def error_code: -> String
+  end
+
+  class RegistryError < Error
+    def initialize: (?String message, ?details: Hash[Symbol, untyped]) -> void
+    def error_code: -> String
+  end
+
+  class ConfigurationError < Error
+    def error_code: -> String
+  end
+
+  class DocRegistry
+    class Entry
+      attr_reader path: String
+      attr_reader name: String
+      attr_reader kind: entry_kind
+      attr_reader visibility: Symbol
+      attr_reader docstring: String
+      attr_reader signature: String
+      attr_reader source_location: String?
+      attr_reader superclass: String?
+      attr_reader doc_source: doc_source
+
+      def initialize: (
+        path: String,
+        name: String,
+        kind: entry_kind,
+        visibility: Symbol,
+        docstring: String,
+        signature: String,
+        source_location: String?,
+        superclass: String?,
+        doc_source: doc_source
+      ) -> void
+      def class_or_module?: -> bool
+      def to_h: -> Hash[Symbol, untyped]
+    end
+
+    class LoadedGem
+      attr_reader name: String
+      attr_reader version: String
+      attr_reader summary: String?
+      attr_reader path: String
+      attr_reader doc_source: doc_source
+      attr_reader objects: Array[Entry]
+
+      def initialize: (
+        name: String,
+        version: String,
+        summary: String?,
+        path: String,
+        doc_source: doc_source,
+        objects: Array[Entry],
+        ?dynamic_lookup: ^(String) -> Entry?,
+        ?lazy_paths: Array[String]
+      ) -> void
+      def find: (String path) -> Entry?
+      def classes: -> Array[Entry]
+
+      private
+
+      def cache_lookup: (String path, Entry? result, ?fallback: Entry?) -> Entry?
+      def replace_object: (String path, Entry object) -> Array[Entry]
+    end
+
+    def self.gem_spec_for: (String name) -> Gem::Specification?
+
+    def initialize: (?shell_runner: ^(Array[String]) -> command_response) -> void
+    def load_gem: (String name) -> LoadedGem
+    def find_object: (String path, gem_name: String) -> Entry?
+    def classes_for: (String gem_name) -> Array[Entry]
+
+    private
+
+    def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
+    def load_yard_objects: (String yardoc) -> Array[Entry]
+    def load_rdoc_objects: (Gem::Specification spec) -> Array[Entry]?
+    def build_rdoc_index_entry: (String name) -> Entry
+    def load_rdoc_object: (Gem::Specification spec, String path) -> Entry?
+    def build_yard_namespace_entry: (YARD::CodeObjects::NamespaceObject object) -> Entry
+    def build_yard_method_entry: (YARD::CodeObjects::MethodObject object) -> Entry
+    def build_yard_constant_entry: (YARD::CodeObjects::ConstantObject object) -> Entry
+    def load_source_objects: (Gem::Specification spec) -> Array[Entry]
+    def ruby_files_for: (Gem::Specification spec) -> Array[String]
+    def parse_source_file: (String file) -> Array[Entry]
+    def build_namespace_entry: (path: String, kind: :class | :module, file: String, line: Integer, ?superclass: String?) -> Entry
+    def build_method_signature: (String namespace_path, Prism::DefNode node, class_method: bool) -> String
+    def format_parameter_list: (Array[[Symbol, Symbol]]) -> Array[String]
+    def join_constant_path: (String? namespace_path, String constant_path) -> String
+    def resolve_constant_reference: (String? namespace_path, String? constant_path) -> String?
+    def format_source_location: (String file, Integer line) -> String
+    def yard_source_location: (YARD::CodeObjects::BaseObject object) -> String?
+    def yard_superclass: (YARD::CodeObjects::NamespaceObject object) -> String?
+    def parse_rdoc_output: (String output) -> [String, String]
+    def rdoc_kind_for: (String path, String signature) -> entry_kind
+    def ri_list_command: (Gem::Specification spec) -> Array[String]
+    def ri_command: (Gem::Specification spec, *String arguments) -> Array[String]
+    def run_shell: (*String command) -> command_response
+    def run_command: (Array[String] command) -> command_response
+    def command_execution_failed?: (command_response response) -> bool
+    def push_children: (Array[[Prism::Node, String?, bool]] stack, Prism::Node node, String? namespace_path, ?bool class_method_context) -> Array[[Prism::Node, String?, bool]]?
+    def find_in_ancestor_chain: (LoadedGem loaded_gem, String path) -> Entry?
+  end
+
+  module Commands
+  end
+
+  module CLI
+    COMMAND_STATUS_TAG: Symbol
+    HELP_FLAGS: Array[String]
+    COMMAND_REGISTRATIONS: Hash[String, String]
+
+    def self.start: (Array[String] arguments, ?out: untyped, ?err: untyped) -> Integer
+    def self.render_help: (untyped out) -> Integer
+    def self.build_registry: -> untyped
+    def self.build_command_adapter: (singleton(GemDocs::Commands::Base) command_class) -> singleton(GemDocs::Commands::Base)
+  end
+
+  module Formatters
+    def self.for: (String | Symbol format) -> Base
+
+    class Base
+      def call: (untyped payload) -> String
+      def error: (untyped payload) -> String
+      def list: (gems: Array[untyped]) -> String
+      def summary: (gem: untyped) -> String
+      def classes: (gem: String, entries: Array[GemDocs::DocRegistry::Entry]) -> String
+      def lookup: (result: GemDocs::DocRegistry::Entry) -> String
+      def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
+
+      private
+
+      def normalize_gem: (untyped gem) -> Hash[Symbol, untyped]
+      def normalize_entry: (untyped entry) -> Hash[Symbol, untyped]
+      def compact_value: (untyped value) -> untyped
+      def compact_hash: (Hash[untyped, untyped] hash) -> Hash[Symbol, untyped]
+    end
+
+    class Json < Base
+      def call: (untyped payload) -> String
+      def error: (untyped payload) -> String
+      def list: (gems: Array[untyped]) -> String
+      def summary: (gem: untyped) -> String
+      def classes: (gem: String, entries: Array[GemDocs::DocRegistry::Entry]) -> String
+      def lookup: (result: GemDocs::DocRegistry::Entry) -> String
+      def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
+    end
+
+    class Text < Base
+      def call: (untyped payload) -> String
+      def error: (Hash[Symbol, untyped] payload) -> String
+      def list: (gems: Array[Hash[Symbol, untyped]]) -> String
+      def summary: (gem: untyped) -> String
+      def classes: (gem: String, entries: Array[GemDocs::DocRegistry::Entry]) -> String
+      def lookup: (result: GemDocs::DocRegistry::Entry) -> String
+      def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
+
+      private
+
+      def build_sections: (*String? lines) -> String
+      def column_widths: (Array[Array[String]] rows) -> Array[Integer]
+      def format_row: (Array[String] values, Array[Integer] widths) -> String
+      def section: (String title, Array[String]? values) -> String?
+      def source_location_line: (String? source_location) -> String?
+    end
+
+    module Context
+      FORMATTERS: Hash[String, String]
+
+      def self.for: (String | Symbol format) -> Base
+
+      class Base < GemDocs::Formatters::Base
+        def call: (gems: Array[untyped]) -> String
+
+        private
+
+        def documented_gems: (Array[untyped] gems) -> Array[Hash[Symbol, untyped]]
+        def gem_sections: (Array[untyped] gems) -> Array[String]
+      end
+
+      class Claude < Base
+        def call: (gems: Array[untyped]) -> String
+      end
+
+      class Cursor < Base
+        def call: (gems: Array[untyped]) -> String
+      end
+
+      class Windsurf < Base
+        def call: (gems: Array[untyped]) -> String
+      end
+
+      class Copilot < Base
+        def call: (gems: Array[untyped]) -> String
+      end
+
+      class Json < Base
+        def call: (gems: Array[untyped]) -> String
+      end
+    end
+  end
+
+  module MCP
+    class Server
+      def self.start: (?Array[String] arguments, ?out: untyped, ?err: untyped) -> Integer
+      def self.load_fast_mcp: (untyped err) -> bool
+    end
+  end
+end
+
+module GemDocs::Commands
+  class Base < Dry::CLI::Command
+    def placeholder: (String command_name) -> Integer
+    def render_command_error: (GemDocs::Error error, ?format: String) -> Integer
+
+    private
+
+    def config: -> GemDocs::Config
+    def formatted_error: (GemDocs::Error error, format: String) -> String
+  end
+
+  class Classes < Base
+    def call: (**untyped) -> Integer
+  end
+
+  class Context < Base
+    def call: (**untyped) -> Integer
+  end
+
+  class List < Base
+    def call: (**untyped) -> Integer
+  end
+
+  class Lookup < Base
+    def call: (**untyped) -> Integer
+  end
+
+  class Search < Base
+    def call: (**untyped) -> Integer
+  end
+
+  class Summary < Base
+    def call: (**untyped) -> Integer
+  end
+
+  class Server < Base
+    def call: (?args: Array[String], **untyped) -> Integer
+  end
+end

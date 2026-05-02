@@ -1,0 +1,11 @@
+module Zeitwerk
+  class Loader
+    def self.for_gem: -> Loader
+    def inflector: -> Inflector
+    def setup: -> void
+  end
+
+  class Inflector
+    def inflect: (Hash[String, String] overrides) -> void
+  end
+end

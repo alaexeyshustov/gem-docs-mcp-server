@@ -21,5 +21,8 @@ jobs:
       - name: Run RuboCop
         run: bundle exec rubocop
 
+      - name: Run Signatures Checker
+        run: bundle exec steep check
+
       - name: Run RSpec
         run: bundle exec rspec

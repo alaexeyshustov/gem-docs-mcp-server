@@ -7,6 +7,8 @@ group :mcp do
 end
 
 group :development, :test do
+  gem "rbs", require: false
   gem "rspec", "~> 3.13"
   gem "rubocop-rails-omakase", require: false
+  gem "steep", require: false
 end
