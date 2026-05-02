@@ -14,34 +14,28 @@ module GemDocs
       end
 
       def list(gems:)
-        call(gems.map { |gem| compact_entry(gem) })
+        call(gems.map { |gem| compact_value(normalize_gem(gem)) })
       end
 
       def summary(gem:)
-        call(compact_entry(gem))
+        call(compact_value(normalize_gem(gem)))
       end
 
       def classes(gem:, entries:)
         call(
           compact_value(
             gem: gem,
-            classes: entries.map { |entry| compact_entry(entry) }
+            classes: entries.map { |entry| compact_value(normalize_entry(entry)) }
           )
         )
       end
 
       def lookup(result:)
-        call(compact_entry(result))
+        call(compact_value(normalize_entry(result)))
       end
 
       def search(results:)
-        call(results.map { |result| compact_entry(result) })
-      end
-
-      private
-
-      def compact_entry(payload)
-        compact_value(payload.transform_values { |value| value.is_a?(Symbol) ? value.to_s : value })
+        call(results.map { |result| compact_value(normalize_entry(result)) })
       end
     end
   end

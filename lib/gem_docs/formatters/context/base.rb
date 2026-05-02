@@ -8,13 +8,14 @@ module GemDocs
 
         def documented_gems(gems)
           gems.filter_map do |gem|
+            normalized_gem = normalize_gem(gem)
             normalized = compact_value(
-              name: gem[:name],
-              version: gem[:version],
-              summary: gem[:summary],
-              doc_source: gem[:doc_source]&.to_s,
-              classes: gem[:classes],
-              entry_points: gem[:entry_points]
+              name: normalized_gem[:name],
+              version: normalized_gem[:version],
+              summary: normalized_gem[:summary],
+              doc_source: normalized_gem[:doc_source],
+              classes: normalized_gem[:classes],
+              entry_points: normalized_gem[:entry_points]
             )
 
             normalized unless normalized[:doc_source] == "none"

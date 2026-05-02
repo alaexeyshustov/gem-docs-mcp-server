@@ -5,6 +5,30 @@ module GemDocs
     class Base
       private
 
+      def normalize_gem(gem)
+        return compact_hash(gem) if gem.is_a?(Hash)
+
+        case gem
+        when GemDocs::DocRegistry::LoadedGem
+          compact_hash(
+            name: gem.name,
+            version: gem.version,
+            summary: gem.summary,
+            path: gem.path,
+            doc_source: gem.doc_source,
+            classes: gem.classes.map(&:path)
+          )
+        else
+          compact_hash(gem.to_h)
+        end
+      end
+
+      def normalize_entry(entry)
+        return compact_hash(entry) if entry.is_a?(Hash)
+
+        compact_hash(entry.to_h)
+      end
+
       def compact_value(value)
         case value
         when Hash
@@ -21,7 +45,13 @@ module GemDocs
             normalized unless normalized.respond_to?(:empty?) && normalized.empty?
           end
         else
-          value
+          value.is_a?(Symbol) ? value.to_s : value
+        end
+      end
+
+      def compact_hash(hash)
+        hash.each_with_object({}) do |(key, value), compacted|
+          compacted[key.to_sym] = value
         end
       end
     end

@@ -7,7 +7,7 @@ module GemDocs
     module Context
       class Json < Base
         def call(gems:)
-          JSON.pretty_generate({ gems: documented_gems(gems) })
+          JSON.pretty_generate(compact_value(gems: documented_gems(gems)))
         end
       end
     end

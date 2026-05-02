@@ -39,33 +39,37 @@ module GemDocs
       end
 
       def summary(gem:)
+        normalized_gem = normalize_gem(gem)
+
         build_sections(
-          "#{gem.fetch(:name)} (#{gem.fetch(:version)})",
-          gem[:summary],
-          "Documentation: #{gem[:doc_source]}",
-          section("Classes", gem[:classes]),
-          section("Entry points", gem[:entry_points])
+          "#{normalized_gem.fetch(:name)} (#{normalized_gem.fetch(:version)})",
+          normalized_gem[:summary],
+          "Documentation: #{normalized_gem[:doc_source]}",
+          section("Classes", normalized_gem[:classes]),
+          section("Entry points", normalized_gem[:entry_points])
         )
       end
 
       def classes(gem:, entries:)
         build_sections(
           "#{gem} classes",
-          *entries.map { |entry| "- #{entry.fetch(:path)}" }
+          *entries.map { |entry| "- #{normalize_entry(entry).fetch(:path)}" }
         )
       end
 
       def lookup(result:)
+        normalized_result = normalize_entry(result)
+
         build_sections(
-          result.fetch(:path),
-          result[:signature],
-          result[:docstring],
-          "Source: #{result[:source_location]}"
+          normalized_result.fetch(:path),
+          normalized_result[:signature],
+          normalized_result[:docstring],
+          source_location_line(normalized_result[:source_location])
         )
       end
 
       def search(results:)
-        build_sections(*results.map { |result| "- #{result.fetch(:path)}" })
+        build_sections(*results.map { |result| "- #{normalize_entry(result).fetch(:path)}" })
       end
 
       private
@@ -88,6 +92,12 @@ module GemDocs
         return if values.nil? || values.empty?
 
         "#{title}: #{values.join(', ')}"
+      end
+
+      def source_location_line(source_location)
+        return if source_location.nil? || source_location.empty?
+
+        "Source: #{source_location}"
       end
     end
   end

@@ -61,4 +61,21 @@ RSpec.describe GemDocs::Formatters::Context do
       ]
     )
   end
+
+  it "omits the gems key when every gem is undocumented" do
+    output = described_class.for("json").call(
+      gems: [
+        {
+          name: "undocumented",
+          version: "0.1.0",
+          summary: "",
+          doc_source: :none,
+          classes: [],
+          entry_points: []
+        }
+      ]
+    )
+
+    expect(JSON.parse(output)).to eq({})
+  end
 end
