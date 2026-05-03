@@ -137,36 +137,41 @@ RSpec.describe GemDocs::Formatters::Json do
   end
 
   describe "#classes" do
-    it "serializes registry entries without requiring hash access" do
+    it "serializes class listing payloads using the public contract" do
       formatter = described_class.new
 
       output = formatter.classes(
-        gem: "rack",
         entries: [
-          build_entry(path: "Rack::Builder"),
-          build_entry(path: "Rack::Request", docstring: "Request wrapper")
+          {
+            name: "Rack::Builder",
+            type: "class",
+            superclass: "Object",
+            summary: "",
+            method_count: 2
+          },
+          {
+            name: "Rack::Request",
+            type: "module",
+            summary: "Request wrapper",
+            method_count: 1
+          }
         ]
       )
 
       expect(JSON.parse(output)).to eq(
-        "gem" => "rack",
-        "classes" => [
+        [
           {
-            "path" => "Rack::Builder",
-            "name" => "Builder",
-            "kind" => "class",
-            "visibility" => "public",
-            "signature" => "Rack::Builder",
-            "doc_source" => "yard"
+            "name" => "Rack::Builder",
+            "type" => "class",
+            "superclass" => "Object",
+            "summary" => "",
+            "method_count" => 2
           },
           {
-            "path" => "Rack::Request",
-            "name" => "Request",
-            "kind" => "class",
-            "visibility" => "public",
-            "docstring" => "Request wrapper",
-            "signature" => "Rack::Request",
-            "doc_source" => "yard"
+            "name" => "Rack::Request",
+            "type" => "module",
+            "summary" => "Request wrapper",
+            "method_count" => 1
           }
         ]
       )

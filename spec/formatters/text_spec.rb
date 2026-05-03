@@ -82,18 +82,30 @@ RSpec.describe GemDocs::Formatters::Text do
   end
 
   describe "#classes" do
-    it "renders registry entries without requiring hash access" do
+    it "renders aligned text rows for the class listing contract" do
       formatter = described_class.new
 
       output = formatter.classes(
-        gem: "rack",
         entries: [
-          build_entry(path: "Rack::Builder"),
-          build_entry(path: "Rack::Request")
+          {
+            name: "Rack::Builder",
+            type: "class",
+            summary: "",
+            method_count: 12
+          },
+          {
+            name: "Rack::Request",
+            type: "module",
+            summary: "Request wrapper",
+            method_count: 1
+          }
         ]
       )
 
-      expect(output).to eq("rack classes\n- Rack::Builder\n- Rack::Request")
+      expect(output).to eq(
+        "Rack::Builder  class   (12 methods)\n" \
+        "Rack::Request  module  (1 method)    Request wrapper"
+      )
     end
   end
 

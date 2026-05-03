@@ -103,6 +103,26 @@ RSpec.describe GemDocs::CLI do
     )
   end
 
+  it "renders structured JSON errors for classes lookup failures" do
+    stub_const("GemDocs::Commands::Classes", Class.new(GemDocs::Commands::Base) do
+      desc "List documented classes and modules"
+      argument :gem_name, type: :string
+
+      def call(**)
+        raise GemDocs::GemNotFound.new("missing-gem")
+      end
+    end)
+
+    status = described_class.start([ "classes", "missing-gem", "--format", "json" ], out: stdout, err: stderr)
+
+    expect(status).to eq(1)
+    expect(stdout.string).to eq("")
+    expect(JSON.parse(stderr.string)).to eq(
+      "error" => "not_found",
+      "message" => "Gem 'missing-gem' is not installed"
+    )
+  end
+
   it "accepts --version for the summary command" do
     registry = instance_double(
       GemDocs::DocRegistry,

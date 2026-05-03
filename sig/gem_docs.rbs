@@ -216,7 +216,7 @@ module GemDocs
       def error: (untyped payload) -> String
       def list: (gems: Array[untyped]) -> String
       def summary: (gem: untyped) -> String
-      def classes: (gem: String, entries: Array[GemDocs::DocRegistry::Entry]) -> String
+      def classes: (entries: Array[untyped]) -> String
       def lookup: (result: GemDocs::DocRegistry::Entry) -> String
       def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
 
@@ -233,7 +233,7 @@ module GemDocs
       def error: (untyped payload) -> String
       def list: (gems: Array[untyped]) -> String
       def summary: (gem: untyped) -> String
-      def classes: (gem: String, entries: Array[GemDocs::DocRegistry::Entry]) -> String
+      def classes: (entries: Array[untyped]) -> String
       def lookup: (result: GemDocs::DocRegistry::Entry) -> String
       def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
     end
@@ -243,7 +243,7 @@ module GemDocs
       def error: (Hash[Symbol, untyped] payload) -> String
       def list: (gems: Array[Hash[Symbol, untyped]]) -> String
       def summary: (gem: untyped) -> String
-      def classes: (gem: String, entries: Array[GemDocs::DocRegistry::Entry]) -> String
+      def classes: (entries: Array[untyped]) -> String
       def lookup: (result: GemDocs::DocRegistry::Entry) -> String
       def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
 
@@ -252,6 +252,7 @@ module GemDocs
       def build_sections: (*String? lines) -> String
       def column_widths: (Array[Array[String]] rows) -> Array[Integer]
       def format_row: (Array[String] values, Array[Integer] widths) -> String
+      def method_count_label: (Integer method_count) -> String
       def section: (String title, Array[String]? values) -> String?
       def source_location_line: (String? source_location) -> String?
     end
@@ -312,7 +313,18 @@ module GemDocs::Commands
   end
 
   class Classes < Base
-    def call: (**untyped) -> Integer
+    def call: (gem_name: String, ?version: String?, ?format: String, **untyped) -> Integer
+
+    private
+
+    def doc_registry: -> GemDocs::DocRegistry
+    def class_payloads: (GemDocs::DocRegistry::LoadedGem loaded_gem) -> Array[Hash[Symbol, untyped]]
+    def visible_named_entry?: (GemDocs::DocRegistry::Entry entry) -> bool
+    def anonymous_entry?: (GemDocs::DocRegistry::Entry entry) -> bool
+    def class_superclass: (GemDocs::DocRegistry::Entry entry) -> String?
+    def summary_for: (GemDocs::DocRegistry::Entry entry) -> String
+    def method_counts_for: (Array[GemDocs::DocRegistry::Entry] objects) -> Hash[String, Integer]
+    def method_owner_path: (String path) -> String
   end
 
   class Context < Base
