@@ -33,9 +33,7 @@ RSpec.describe GemDocs::Commands::List do
           build_spec(name: "faraday", version: "2.12.0", summary: "HTTP/REST API client library.")
         ]
       )
-      allow(registry).to receive(:load_gem).with("faraday").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :yard)
-      )
+      allow(registry).to receive(:doc_source_for).with("faraday", spec: anything).and_return(:yard)
 
       status = command.call(format: "json")
 
@@ -61,16 +59,11 @@ RSpec.describe GemDocs::Commands::List do
           build_spec(name: "source-only", version: "0.1.0", summary: "Fallback docs")
         ]
       )
-      allow(registry).to receive(:load_gem).with("faraday").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :yard)
-      )
-      allow(registry).to receive(:load_gem).with("rake").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :rdoc)
-      )
-      allow(registry).to receive(:load_gem).with("source-only").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :source_only)
-      )
-      allow(registry).to receive(:load_gem).with("broken-gem").and_raise(GemDocs::RegistryError.new("boom"))
+      allow(registry).to receive(:doc_source_for).with("faraday", spec: anything).and_return(:yard)
+      allow(registry).to receive(:doc_source_for).with("rake", spec: anything).and_return(:rdoc)
+      allow(registry).to receive(:doc_source_for).with("source-only", spec: anything).and_return(:source_only)
+      allow(registry).to receive(:doc_source_for).with("broken-gem", spec: anything)
+        .and_raise(GemDocs::RegistryError.new("boom"))
 
       command.call(format: "json")
 
@@ -107,9 +100,7 @@ RSpec.describe GemDocs::Commands::List do
         ]
       )
       allow(command).to receive(:config).and_return(instance_double(GemDocs::Config, exclude_gems: [ "bundler" ]))
-      allow(registry).to receive(:load_gem).with("faraday").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :yard)
-      )
+      allow(registry).to receive(:doc_source_for).with("faraday", spec: anything).and_return(:yard)
 
       command.call(format: "json")
 
@@ -124,6 +115,18 @@ RSpec.describe GemDocs::Commands::List do
         ]
       )
     end
+
+    it "does not swallow unexpected exceptions" do
+      allow(command).to receive(:installed_specs).and_return(
+        [
+          build_spec(name: "faraday", version: "2.12.0", summary: "HTTP/REST API client library.")
+        ]
+      )
+      allow(registry).to receive(:doc_source_for).with("faraday", spec: anything)
+        .and_raise(RuntimeError, "boom")
+
+      expect { command.call(format: "json") }.to raise_error(RuntimeError, "boom")
+    end
   end
 
   describe "--format text" do
@@ -134,12 +137,8 @@ RSpec.describe GemDocs::Commands::List do
           build_spec(name: "obscure-gem", version: "0.1.0", summary: "")
         ]
       )
-      allow(registry).to receive(:load_gem).with("faraday").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :yard)
-      )
-      allow(registry).to receive(:load_gem).with("obscure-gem").and_return(
-        instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :source_only)
-      )
+      allow(registry).to receive(:doc_source_for).with("faraday", spec: anything).and_return(:yard)
+      allow(registry).to receive(:doc_source_for).with("obscure-gem", spec: anything).and_return(:source_only)
 
       status = command.call(format: "text")
 

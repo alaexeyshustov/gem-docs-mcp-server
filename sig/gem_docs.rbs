@@ -137,21 +137,28 @@ module GemDocs
 
     def initialize: (?shell_runner: ^(Array[String]) -> command_response) -> void
     def load_gem: (String name) -> LoadedGem
+    def doc_source_for: (String name, ?spec: Gem::Specification?) -> doc_source
     def find_object: (String path, gem_name: String) -> Entry?
     def classes_for: (String gem_name) -> Array[Entry]
 
     private
 
+    def detect_doc_source: (Gem::Specification spec) -> doc_source
     def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
     def load_yard_objects: (String yardoc) -> Array[Entry]
     def load_rdoc_objects: (Gem::Specification spec) -> Array[Entry]?
+    def yardoc_path_for: (Gem::Specification spec) -> String
+    def rdoc_available?: (Gem::Specification spec) -> bool
     def build_rdoc_index_entry: (String name) -> Entry
     def load_rdoc_object: (Gem::Specification spec, String path) -> Entry?
     def build_yard_namespace_entry: (YARD::CodeObjects::NamespaceObject object) -> Entry
     def build_yard_method_entry: (YARD::CodeObjects::MethodObject object) -> Entry
     def build_yard_constant_entry: (YARD::CodeObjects::ConstantObject object) -> Entry
     def load_source_objects: (Gem::Specification spec) -> Array[Entry]
+    def source_objects_available?: (Gem::Specification spec) -> bool
     def ruby_files_for: (Gem::Specification spec) -> Array[String]
+    def source_file_has_documentable_objects?: (String file) -> bool
+    def documentable_source_node?: (Prism::Node node) -> bool
     def parse_source_file: (String file) -> Array[Entry]
     def build_namespace_entry: (path: String, kind: :class | :module, file: String, line: Integer, ?superclass: String?) -> Entry
     def build_method_signature: (String namespace_path, Prism::DefNode node, class_method: bool) -> String

@@ -100,15 +100,31 @@ module GemDocs
 
     def initialize(shell_runner: nil)
       @loaded_gems = {}
+      @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
     end
 
     def load_gem(name)
-      @loaded_gems.fetch(name) do
-        spec = self.class.gem_spec_for(name)
-        raise GemDocs::GemNotFound.new(name) unless spec
+      loaded_gem = @loaded_gems[name]
+      return loaded_gem if loaded_gem
 
-        @loaded_gems[name] = build_loaded_gem(spec)
+      spec = self.class.gem_spec_for(name)
+      raise GemDocs::GemNotFound.new(name) unless spec
+
+      loaded_gem = build_loaded_gem(spec)
+      @doc_sources[name] = loaded_gem.doc_source
+      @loaded_gems[name] = loaded_gem
+    end
+
+    def doc_source_for(name, spec: nil)
+      loaded_gem = @loaded_gems[name]
+      return loaded_gem.doc_source if loaded_gem
+
+      spec ||= self.class.gem_spec_for(name)
+      raise GemDocs::GemNotFound.new(name) unless spec
+
+      @doc_sources.fetch(name) do
+        @doc_sources[name] = detect_doc_source(spec)
       end
     end
 
@@ -123,9 +139,17 @@ module GemDocs
 
     private
 
+    def detect_doc_source(spec)
+      return :yard if File.exist?(yardoc_path_for(spec))
+      return :rdoc if rdoc_available?(spec)
+      return :source_only if source_objects_available?(spec)
+
+      :none
+    end
+
     def build_loaded_gem(spec)
-      loaded_gem = if File.exist?(File.join(spec.full_gem_path, ".yardoc"))
-        objects = load_yard_objects(File.join(spec.full_gem_path, ".yardoc"))
+      loaded_gem = if File.exist?(yardoc_path_for(spec))
+        objects = load_yard_objects(yardoc_path_for(spec))
         LoadedGem.new(
           name: spec.name,
           version: spec.version.to_s,
@@ -210,6 +234,21 @@ module GemDocs
       end
     end
 
+    def yardoc_path_for(spec)
+      File.join(spec.full_gem_path, ".yardoc")
+    end
+
+    def rdoc_available?(spec)
+      return false unless File.directory?(spec.doc_dir)
+
+      response = run_shell(*ri_list_command(spec))
+      return false if command_execution_failed?(response)
+
+      raise GemDocs::RegistryError.new("Failed to load ri registry: #{response[:stderr]}") unless response[:success]
+
+      response[:stdout].each_line.any? { |line| !line.strip.empty? }
+    end
+
     def build_rdoc_index_entry(name)
       Entry.new(
         path: name,
@@ -290,10 +329,41 @@ module GemDocs
       end
     end
 
+    def source_objects_available?(spec)
+      ruby_files_for(spec).any? do |file|
+        source_file_has_documentable_objects?(file)
+      end
+    end
+
     def ruby_files_for(spec)
       Array(spec.require_paths).flat_map do |require_path|
         Dir.glob(File.join(spec.full_gem_path, require_path, "**", "*.rb"))
       end.sort
+    end
+
+    def source_file_has_documentable_objects?(file)
+      stack = [ Prism.parse_file(file).value ]
+
+      until stack.empty?
+        node = stack.pop
+        return true if documentable_source_node?(node)
+        next unless node.respond_to?(:compact_child_nodes)
+
+        node.compact_child_nodes.each do |child|
+          stack << child
+        end
+      end
+
+      false
+    end
+
+    def documentable_source_node?(node)
+      case node
+      when Prism::ClassNode, Prism::ModuleNode, Prism::DefNode, Prism::ConstantWriteNode
+        true
+      else
+        false
+      end
     end
 
     def parse_source_file(file)

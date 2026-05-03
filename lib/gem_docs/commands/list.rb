@@ -25,19 +25,17 @@ module GemDocs
         @doc_registry ||= GemDocs::DocRegistry.new
       end
 
-      def gem_payload(spec)
-        loaded_gem = doc_registry.load_gem(spec.name)
-
-        {
-          name: spec.name,
-          version: spec.version.to_s,
-          doc_source: loaded_gem.doc_source,
-          summary: spec.summary
-        }
-      rescue StandardError
-        {
-          name: spec.name,
-          version: spec.version.to_s,
+    def gem_payload(spec)
+      {
+        name: spec.name,
+        version: spec.version.to_s,
+        doc_source: doc_registry.doc_source_for(spec.name, spec: spec),
+        summary: spec.summary
+      }
+    rescue GemDocs::Error
+      {
+        name: spec.name,
+        version: spec.version.to_s,
           doc_source: :none,
           summary: spec.summary
         }
