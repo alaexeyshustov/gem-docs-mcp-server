@@ -18,14 +18,17 @@ RSpec.describe GemDocs::Formatters::Text do
     )
   end
 
-  def build_loaded_gem(name:, version:, summary:, doc_source:, objects:)
+  def build_loaded_gem(name:, version:, summary:, doc_source:, objects:, homepage: nil, license: nil, entry_points: [])
     GemDocs::DocRegistry::LoadedGem.new(
       name: name,
       version: version,
       summary: summary,
+      homepage: homepage,
+      license: license,
       path: "/tmp/#{name}",
       doc_source: doc_source,
-      objects: objects
+      objects: objects,
+      entry_points: entry_points
     )
   end
 
@@ -58,6 +61,7 @@ RSpec.describe GemDocs::Formatters::Text do
         version: "3.1.0",
         summary: "HTTP toolkit",
         doc_source: :yard,
+        entry_points: [ "Rack.new", "Rack::Builder#call" ],
         objects: [
           build_entry(path: "Rack::Builder"),
           build_entry(path: "Rack::Request")
@@ -67,10 +71,12 @@ RSpec.describe GemDocs::Formatters::Text do
       output = formatter.summary(gem: loaded_gem)
 
       expect(output).to eq(
-        "rack (3.1.0)\n" \
+        "rack 3.1.0 [yard]\n" \
         "HTTP toolkit\n" \
-        "Documentation: yard\n" \
-        "Classes: Rack::Builder, Rack::Request"
+        "Classes: Rack::Builder, Rack::Request\n" \
+        "Entry points:\n" \
+        "  Rack.new\n" \
+        "  Rack::Builder#call"
       )
     end
   end

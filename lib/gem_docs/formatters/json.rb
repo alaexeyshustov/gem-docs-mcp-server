@@ -18,7 +18,20 @@ module GemDocs
       end
 
       def summary(gem:)
-        call(compact_value(normalize_gem(gem)))
+        normalized_gem = normalize_gem(gem)
+        payload = {
+          name: normalized_gem.fetch(:name),
+          version: normalized_gem.fetch(:version),
+          doc_source: normalized_gem.fetch(:doc_source).to_s,
+          classes: Array(normalized_gem[:classes]),
+          entry_points: Array(normalized_gem[:entry_points])
+        }
+        description = normalized_gem[:description] || normalized_gem[:summary]
+        payload[:description] = description if description && !description.empty?
+        payload[:homepage] = normalized_gem[:homepage] if normalized_gem[:homepage] && !normalized_gem[:homepage].empty?
+        payload[:license] = normalized_gem[:license] if normalized_gem[:license] && !normalized_gem[:license].empty?
+
+        call(payload)
       end
 
       def classes(gem:, entries:)

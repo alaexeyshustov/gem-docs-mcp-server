@@ -83,4 +83,45 @@ RSpec.describe GemDocs::CLI do
       "message" => "Documentation is unavailable for 'missing-gem'"
     )
   end
+
+  it "renders structured JSON errors for summary lookup failures" do
+    stub_const("GemDocs::Commands::Summary", Class.new(GemDocs::Commands::Base) do
+      desc "Summarize a gem"
+
+      def call(**)
+        raise GemDocs::GemNotFound.new("missing-gem")
+      end
+    end)
+
+    status = described_class.start([ "summary", "missing-gem", "--format", "json" ], out: stdout, err: stderr)
+
+    expect(status).to eq(1)
+    expect(stdout.string).to eq("")
+    expect(JSON.parse(stderr.string)).to eq(
+      "error" => "not_found",
+      "message" => "Gem 'missing-gem' is not installed"
+    )
+  end
+
+  it "accepts --version for the summary command" do
+    registry = instance_double(
+      GemDocs::DocRegistry,
+      load_gem: GemDocs::DocRegistry::LoadedGem.new(
+        name: "faraday",
+        version: "2.12.0",
+        summary: "HTTP client",
+        description: "HTTP client",
+        path: "/tmp/faraday",
+        doc_source: :yard,
+        objects: []
+      )
+    )
+    allow(GemDocs::DocRegistry).to receive(:new).and_return(registry)
+
+    status = described_class.start([ "summary", "faraday", "--version", "2.12.0" ], out: stdout, err: stderr)
+
+    expect(status).to eq(0)
+    expect(stderr.string).to eq("")
+    expect(registry).to have_received(:load_gem).with("faraday", version: "2.12.0")
+  end
 end

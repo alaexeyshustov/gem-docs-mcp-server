@@ -14,9 +14,13 @@ module GemDocs
             name: gem.name,
             version: gem.version,
             summary: gem.summary,
+            description: gem.description,
+            homepage: gem.homepage,
+            license: gem.license,
             path: gem.path,
             doc_source: gem.doc_source,
-            classes: gem.classes.map(&:path)
+            classes: gem.classes.map(&:path),
+            entry_points: gem.entry_points
           )
         else
           compact_hash(gem.to_h)

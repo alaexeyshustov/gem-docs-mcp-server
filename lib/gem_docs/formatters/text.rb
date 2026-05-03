@@ -40,13 +40,15 @@ module GemDocs
 
       def summary(gem:)
         normalized_gem = normalize_gem(gem)
+        entry_points = Array(normalized_gem[:entry_points])
 
         build_sections(
-          "#{normalized_gem.fetch(:name)} (#{normalized_gem.fetch(:version)})",
-          normalized_gem[:summary],
-          "Documentation: #{normalized_gem[:doc_source]}",
+          "#{normalized_gem.fetch(:name)} #{normalized_gem.fetch(:version)} [#{normalized_gem.fetch(:doc_source)}]",
+          normalized_gem[:description] || normalized_gem[:summary],
+          normalized_gem[:homepage],
+          normalized_gem[:license] ? "License: #{normalized_gem[:license]}" : nil,
           section("Classes", normalized_gem[:classes]),
-          section("Entry points", normalized_gem[:entry_points])
+          entry_points.empty? ? "Entry points: none documented" : build_sections("Entry points:", *entry_points.map { |entry| "  #{entry}" })
         )
       end
 

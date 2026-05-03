@@ -110,17 +110,25 @@ module GemDocs
       attr_reader name: String
       attr_reader version: String
       attr_reader summary: String?
+      attr_reader description: String?
+      attr_reader homepage: String?
+      attr_reader license: String?
       attr_reader path: String
       attr_reader doc_source: doc_source
       attr_reader objects: Array[Entry]
+      attr_reader entry_points: Array[String]
 
       def initialize: (
         name: String,
         version: String,
         summary: String?,
+        ?description: String?,
+        ?homepage: String?,
+        ?license: String?,
         path: String,
         doc_source: doc_source,
         objects: Array[Entry],
+        ?entry_points: Array[String],
         ?dynamic_lookup: ^(String) -> Entry?,
         ?lazy_paths: Array[String]
       ) -> void
@@ -133,19 +141,25 @@ module GemDocs
       def replace_object: (String path, Entry object) -> Array[Entry]
     end
 
-    def self.gem_spec_for: (String name) -> Gem::Specification?
+    def self.gem_spec_for: (String name, ?version: String?) -> Gem::Specification?
 
     def initialize: (?shell_runner: ^(Array[String]) -> command_response) -> void
-    def load_gem: (String name) -> LoadedGem
-    def doc_source_for: (String name, ?spec: Gem::Specification?) -> doc_source
+    def load_gem: (String name, ?version: String?) -> LoadedGem
+    def doc_source_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def find_object: (String path, gem_name: String) -> Entry?
     def classes_for: (String gem_name) -> Array[Entry]
 
     private
 
     def detect_doc_source: (Gem::Specification spec) -> doc_source
+    def cache_key_for: (String name, String? version) -> (String | [String, String])
+    def normalize_version: (String? version) -> String?
     def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
     def load_yard_objects: (String yardoc) -> Array[Entry]
+    def gem_description: (Gem::Specification spec) -> String?
+    def gem_license: (Gem::Specification spec) -> String?
+    def infer_entry_points: (String gem_name, Array[Entry] objects, doc_source: doc_source) -> Array[String]
+    def select_primary_class: (Array[Entry] classes, String gem_name) -> Entry?
     def load_rdoc_objects: (Gem::Specification spec) -> Array[Entry]?
     def yardoc_path_for: (Gem::Specification spec) -> String
     def rdoc_available?: (Gem::Specification spec) -> bool
@@ -324,7 +338,12 @@ module GemDocs::Commands
   end
 
   class Summary < Base
-    def call: (**untyped) -> Integer
+    def call: (gem_name: String, ?version: String?, ?format: String, **untyped) -> Integer
+
+    private
+
+    def doc_registry: -> GemDocs::DocRegistry
+    def summary_payload: (GemDocs::DocRegistry::LoadedGem loaded_gem) -> Hash[Symbol, untyped]
   end
 
   class Server < Base

@@ -19,14 +19,17 @@ RSpec.describe GemDocs::Formatters::Json do
     )
   end
 
-  def build_loaded_gem(name:, version:, summary:, doc_source:, objects:)
+  def build_loaded_gem(name:, version:, summary:, doc_source:, objects:, homepage: nil, license: nil, entry_points: [])
     GemDocs::DocRegistry::LoadedGem.new(
       name: name,
       version: version,
       summary: summary,
+      homepage: homepage,
+      license: license,
       path: "/tmp/#{name}",
       doc_source: doc_source,
-      objects: objects
+      objects: objects,
+      entry_points: entry_points
     )
   end
 
@@ -90,7 +93,10 @@ RSpec.describe GemDocs::Formatters::Json do
         name: "rack",
         version: "3.1.0",
         summary: "HTTP toolkit",
+        homepage: "https://example.test/rack",
+        license: "MIT",
         doc_source: :yard,
+        entry_points: [ "Rack.new" ],
         objects: [
           build_entry(path: "Rack::Builder"),
           build_entry(path: "Rack::Request")
@@ -102,10 +108,30 @@ RSpec.describe GemDocs::Formatters::Json do
       expect(JSON.parse(output)).to eq(
         "name" => "rack",
         "version" => "3.1.0",
-        "summary" => "HTTP toolkit",
-        "path" => "/tmp/rack",
+        "description" => "HTTP toolkit",
+        "homepage" => "https://example.test/rack",
+        "license" => "MIT",
         "doc_source" => "yard",
-        "classes" => [ "Rack::Builder", "Rack::Request" ]
+        "classes" => [ "Rack::Builder", "Rack::Request" ],
+        "entry_points" => [ "Rack.new" ]
+      )
+    end
+
+    it "preserves empty entry points for source-only gems" do
+      formatter = described_class.new
+      loaded_gem = build_loaded_gem(
+        name: "source-only",
+        version: "0.1.0",
+        summary: "Fallback docs",
+        doc_source: :source_only,
+        objects: [ build_entry(path: "SourceOnly::Widget") ]
+      )
+
+      output = formatter.summary(gem: loaded_gem)
+
+      expect(JSON.parse(output)).to include(
+        "name" => "source-only",
+        "entry_points" => []
       )
     end
   end

@@ -7,10 +7,10 @@ require "spec_helper"
 require "gem_docs"
 
 RSpec.describe GemDocs::DocRegistry do
-  def build_fixture_spec(name, gem_root:, summary: "Fixture gem")
+  def build_fixture_spec(name, gem_root:, summary: "Fixture gem", version: "0.1.0")
     Gem::Specification.new do |spec|
       spec.name = name
-      spec.version = "0.1.0"
+      spec.version = version
       spec.summary = summary
       spec.files = Dir.chdir(gem_root) { Dir["lib/**/*.rb"] }
       spec.require_paths = [ "lib" ]
@@ -85,6 +85,7 @@ RSpec.describe GemDocs::DocRegistry do
         loaded_gem = registry.load_gem("source_only")
 
         expect(loaded_gem.doc_source).to eq(:source_only)
+        expect(loaded_gem.entry_points).to eq([])
         expect(registry.find_object("SourceOnly::Widget#call", gem_name: "source_only")&.signature)
           .to eq("SourceOnly::Widget#call(input)")
       end
@@ -110,8 +111,23 @@ RSpec.describe GemDocs::DocRegistry do
 
         expect(first_load.doc_source).to eq(:yard)
         expect(second_load).to equal(first_load)
+        expect(first_load.entry_points).to include("WellDocumented::Widget#call")
         expect(registry.find_object("WellDocumented::Widget#call", gem_name: "well_documented")&.docstring)
           .to include("Performs work.")
+      end
+    end
+
+    it "loads a requested gem version when provided" do
+      Dir.mktmpdir do |tmpdir|
+        gem_root = File.join(tmpdir, "versioned-gem")
+        FileUtils.mkdir_p(File.join(gem_root, "lib"))
+        spec = build_fixture_spec("versioned-gem", gem_root: gem_root, version: "1.2.3")
+
+        allow(described_class).to receive(:gem_spec_for).with("versioned-gem", version: "1.2.3").and_return(spec)
+
+        registry = described_class.new
+
+        expect(registry.load_gem("versioned-gem", version: "1.2.3").version).to eq("1.2.3")
       end
     end
 
@@ -231,6 +247,39 @@ RSpec.describe GemDocs::DocRegistry do
   end
 
   describe "#doc_source_for" do
+    it "reuses cached versioned loads for doc source lookups" do
+      Dir.mktmpdir do |tmpdir|
+        gem_root = File.join(tmpdir, "versioned-gem")
+        FileUtils.mkdir_p(File.join(gem_root, "lib"))
+        File.write(File.join(gem_root, "lib", "versioned-gem.rb"), "module VersionedGem; end\n")
+        spec = build_fixture_spec("versioned-gem", gem_root: gem_root, version: "1.2.3")
+
+        expect(described_class).to receive(:gem_spec_for).with("versioned-gem", version: "1.2.3").once.and_return(spec)
+
+        registry = described_class.new
+        registry.load_gem("versioned-gem", version: "1.2.3")
+
+        expect(registry.doc_source_for("versioned-gem", version: "1.2.3")).to eq(:source_only)
+      end
+    end
+
+    it "keeps cached doc sources separate for different gem versions" do
+      Dir.mktmpdir do |tmpdir|
+        first_root = File.join(tmpdir, "multi-version-1")
+        second_root = File.join(tmpdir, "multi-version-2")
+        FileUtils.mkdir_p(first_root)
+        FileUtils.mkdir_p(File.join(second_root, "lib"))
+        File.write(File.join(second_root, "lib", "multi-version.rb"), "module MultiVersion; end\n")
+
+        first_spec = build_fixture_spec("multi-version", gem_root: first_root, version: "1.0.0")
+        second_spec = build_fixture_spec("multi-version", gem_root: second_root, version: "2.0.0")
+        registry = described_class.new
+
+        expect(registry.doc_source_for("multi-version", version: "1.0.0", spec: first_spec)).to eq(:none)
+        expect(registry.doc_source_for("multi-version", version: "2.0.0", spec: second_spec)).to eq(:source_only)
+      end
+    end
+
     it "returns :yard when a gem has a .yardoc registry" do
       with_yard_fixture_gem("well_documented", source: "module WellDocumented; end\n") do
         registry = described_class.new
