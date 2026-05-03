@@ -86,7 +86,6 @@ RSpec.describe GemDocs::Formatters::Text do
       formatter = described_class.new
 
       output = formatter.classes(
-        gem: "rack",
         entries: [
           {
             name: "Rack::Builder",

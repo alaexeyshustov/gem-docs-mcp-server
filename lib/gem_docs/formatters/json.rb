@@ -34,7 +34,7 @@ module GemDocs
         call(payload)
       end
 
-      def classes(gem:, entries:)
+      def classes(entries:)
         payload = entries.map do |entry|
           normalized_entry = normalize_entry(entry)
           name = normalized_entry[:path] || normalized_entry.fetch(:name)

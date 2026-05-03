@@ -141,7 +141,6 @@ RSpec.describe GemDocs::Formatters::Json do
       formatter = described_class.new
 
       output = formatter.classes(
-        gem: "rack",
         entries: [
           {
             name: "Rack::Builder",

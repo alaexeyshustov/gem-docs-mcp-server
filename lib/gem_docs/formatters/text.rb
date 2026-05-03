@@ -52,7 +52,7 @@ module GemDocs
         )
       end
 
-      def classes(gem:, entries:)
+      def classes(entries:)
         normalized_entries = entries.map do |entry|
           normalized_entry = normalize_entry(entry)
           name = normalized_entry[:path] || normalized_entry.fetch(:name)

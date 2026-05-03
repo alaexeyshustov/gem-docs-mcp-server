@@ -9,7 +9,7 @@ module GemDocs
 
       def call(gem_name:, version: nil, format: "text", **_kwargs)
         loaded_gem = doc_registry.load_gem(gem_name, version: version)
-        out.puts GemDocs::Formatters.for(format).classes(gem: gem_name, entries: class_payloads(loaded_gem))
+        out.puts GemDocs::Formatters.for(format).classes(entries: class_payloads(loaded_gem))
         0
       end
 
@@ -20,6 +20,8 @@ module GemDocs
       end
 
       def class_payloads(loaded_gem)
+        method_counts = method_counts_for(loaded_gem.objects)
+
         loaded_gem.classes
           .select { |entry| visible_named_entry?(entry) }
           .sort_by(&:path)
@@ -29,7 +31,7 @@ module GemDocs
               type: entry.kind.to_s,
               superclass: class_superclass(entry),
               summary: summary_for(entry),
-              method_count: method_count_for(loaded_gem, entry)
+              method_count: method_counts.fetch(entry.path, 0)
             }
           end
       end
@@ -55,13 +57,20 @@ module GemDocs
         entry.docstring.to_s.lines.map(&:strip).reject(&:empty?).first.to_s
       end
 
-      def method_count_for(loaded_gem, entry)
-        loaded_gem.objects.count do |object|
-          next false unless [ :class_method, :instance_method ].include?(object.kind)
-          next false unless object.visibility == :public
+      def method_counts_for(objects)
+        objects.each_with_object(Hash.new(0)) do |object, counts|
+          next unless [ :class_method, :instance_method ].include?(object.kind)
+          next unless object.visibility == :public
 
-          object.path.start_with?("#{entry.path}#", "#{entry.path}.")
+          owner_path = method_owner_path(object.path)
+          next if owner_path.nil? || owner_path.empty?
+
+          counts[owner_path] += 1
         end
+      end
+
+      def method_owner_path(path)
+        path.to_s.split(/[.#]/, 2).first
       end
     end
   end
