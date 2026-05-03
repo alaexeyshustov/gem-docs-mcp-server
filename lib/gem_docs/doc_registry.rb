@@ -29,15 +29,33 @@ module GemDocs
       MISSING = Object.new
       private_constant :MISSING
 
-      attr_reader :name, :version, :summary, :path, :doc_source, :objects
+      attr_reader :name, :version, :summary, :description, :homepage, :license, :path, :doc_source, :objects,
+                  :entry_points
 
-      def initialize(name:, version:, summary:, path:, doc_source:, objects:, dynamic_lookup: nil, lazy_paths: [])
+      def initialize(
+        name:,
+        version:,
+        summary:,
+        path:,
+        doc_source:,
+        objects:,
+        description: nil,
+        homepage: nil,
+        license: nil,
+        entry_points: [],
+        dynamic_lookup: nil,
+        lazy_paths: []
+      )
         @name = name
         @version = version
         @summary = summary
+        @description = description
+        @homepage = homepage
+        @license = license
         @path = path
         @doc_source = doc_source
         @objects = objects.dup
+        @entry_points = entry_points.dup
         @dynamic_lookup = dynamic_lookup
         @lazy_paths = lazy_paths.each_with_object({}) do |lazy_path, pending|
           pending[lazy_path] = true
@@ -91,8 +109,10 @@ module GemDocs
     end
 
     class << self
-      def gem_spec_for(name)
-        Gem::Specification.find_by_name(name)
+      def gem_spec_for(name, version: nil)
+        return Gem::Specification.find_by_name(name) if version.nil? || version.empty?
+
+        Gem::Specification.find_by_name(name, version)
       rescue Gem::LoadError
         nil
       end
@@ -104,16 +124,21 @@ module GemDocs
       @shell_runner = shell_runner || method(:run_command)
     end
 
-    def load_gem(name)
-      loaded_gem = @loaded_gems[name]
+    def load_gem(name, version: nil)
+      cache_key = version.nil? || version.empty? ? name : [ name, version ].freeze
+      loaded_gem = @loaded_gems[cache_key]
       return loaded_gem if loaded_gem
 
-      spec = self.class.gem_spec_for(name)
+      spec = if version.nil? || version.empty?
+        self.class.gem_spec_for(name)
+      else
+        self.class.gem_spec_for(name, version: version)
+      end
       raise GemDocs::GemNotFound.new(name) unless spec
 
       loaded_gem = build_loaded_gem(spec)
       @doc_sources[name] = loaded_gem.doc_source
-      @loaded_gems[name] = loaded_gem
+      @loaded_gems[cache_key] = loaded_gem
     end
 
     def doc_source_for(name, spec: nil)
@@ -154,18 +179,26 @@ module GemDocs
           name: spec.name,
           version: spec.version.to_s,
           summary: spec.summary,
+          description: gem_description(spec),
+          homepage: spec.homepage,
+          license: gem_license(spec),
           path: spec.full_gem_path,
           doc_source: :yard,
-          objects: objects
+          objects: objects,
+          entry_points: infer_entry_points(spec.name, objects, doc_source: :yard)
         )
       elsif (rdoc_objects = load_rdoc_objects(spec))
         LoadedGem.new(
           name: spec.name,
           version: spec.version.to_s,
           summary: spec.summary,
+          description: gem_description(spec),
+          homepage: spec.homepage,
+          license: gem_license(spec),
           path: spec.full_gem_path,
           doc_source: :rdoc,
           objects: rdoc_objects,
+          entry_points: infer_entry_points(spec.name, rdoc_objects, doc_source: :rdoc),
           dynamic_lookup: ->(path) { load_rdoc_object(spec, path) },
           lazy_paths: rdoc_objects.map(&:path)
         )
@@ -175,9 +208,13 @@ module GemDocs
           name: spec.name,
           version: spec.version.to_s,
           summary: spec.summary,
+          description: gem_description(spec),
+          homepage: spec.homepage,
+          license: gem_license(spec),
           path: spec.full_gem_path,
           doc_source: objects.empty? ? :none : :source_only,
-          objects: objects
+          objects: objects,
+          entry_points: infer_entry_points(spec.name, objects, doc_source: objects.empty? ? :none : :source_only)
         )
       end
 
@@ -216,6 +253,49 @@ module GemDocs
       end
     rescue StandardError => e
       raise GemDocs::RegistryError.new("Failed to load YARD registry: #{e.message}")
+    end
+
+    def gem_description(spec)
+      description = spec.description.to_s.strip
+      return description unless description.empty?
+
+      spec.summary
+    end
+
+    def gem_license(spec)
+      licenses = Array(spec.licenses).filter_map do |value|
+        normalized = value.to_s.strip
+        normalized unless normalized.empty?
+      end
+      return licenses.first unless licenses.empty?
+
+      license = spec.respond_to?(:license) ? spec.license.to_s.strip : ""
+      license.empty? ? nil : license
+    end
+
+    def infer_entry_points(gem_name, objects, doc_source:)
+      return [] if doc_source == :source_only || doc_source == :none
+
+      classes = objects.select(&:class_or_module?).sort_by(&:path)
+      methods = objects.select do |object|
+        [ :class_method, :instance_method ].include?(object.kind) && object.visibility == :public
+      end.sort_by(&:path)
+
+      entry_points = []
+      primary_class = select_primary_class(classes, gem_name)
+      entry_points << "#{primary_class.path}.new" if primary_class&.kind == :class
+      entry_points.concat(methods.reject { |object| object.name == "initialize" }.map(&:path))
+      entry_points.uniq.first(3)
+    end
+
+    def select_primary_class(classes, gem_name)
+      namespace = gem_name.split(/[^a-zA-Z0-9]+/).reject(&:empty?).map(&:capitalize).join
+
+      classes.find { |entry| entry.kind == :class && entry.path == namespace } ||
+        classes.find { |entry| entry.kind == :class && !entry.path.include?("::") } ||
+        classes.find { |entry| entry.kind == :module && entry.path == namespace } ||
+        classes.find { |entry| !entry.path.include?("::") } ||
+        classes.first
     end
 
     def load_rdoc_objects(spec)

@@ -83,4 +83,23 @@ RSpec.describe GemDocs::CLI do
       "message" => "Documentation is unavailable for 'missing-gem'"
     )
   end
+
+  it "renders structured JSON errors for summary lookup failures" do
+    stub_const("GemDocs::Commands::Summary", Class.new(GemDocs::Commands::Base) do
+      desc "Summarize a gem"
+
+      def call(**)
+        raise GemDocs::GemNotFound.new("missing-gem")
+      end
+    end)
+
+    status = described_class.start([ "summary", "missing-gem", "--format", "json" ], out: stdout, err: stderr)
+
+    expect(status).to eq(1)
+    expect(stdout.string).to eq("")
+    expect(JSON.parse(stderr.string)).to eq(
+      "error" => "not_found",
+      "message" => "Gem 'missing-gem' is not installed"
+    )
+  end
 end
