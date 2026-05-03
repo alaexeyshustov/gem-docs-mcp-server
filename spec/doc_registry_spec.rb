@@ -230,6 +230,62 @@ RSpec.describe GemDocs::DocRegistry do
     end
   end
 
+  describe "#doc_source_for" do
+    it "returns :yard when a gem has a .yardoc registry" do
+      with_yard_fixture_gem("well_documented", source: "module WellDocumented; end\n") do
+        registry = described_class.new
+
+        expect(registry.doc_source_for("well_documented")).to eq(:yard)
+      end
+    end
+
+    it "uses ri index availability without loading ri objects" do
+      with_source_fixture_gem("rdoc_only", source: "# intentionally empty\n") do |spec|
+        FileUtils.mkdir_p(spec.doc_dir)
+        commands = []
+
+        shell_runner = lambda do |command|
+          commands << command
+
+          case command.last
+          when "-l"
+            { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+          else
+            raise "unexpected command: #{command.inspect}"
+          end
+        end
+
+        registry = described_class.new(shell_runner: shell_runner)
+
+        expect(registry.doc_source_for("rdoc_only")).to eq(:rdoc)
+        expect(commands).to eq([ [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "-l" ] ])
+      end
+    end
+
+    it "returns :source_only when Ruby source defines documentable objects" do
+      with_source_fixture_gem("source_only", source: <<~RUBY) do
+        module SourceOnly
+          class Widget
+            def call
+            end
+          end
+        end
+      RUBY
+        registry = described_class.new
+
+        expect(registry.doc_source_for("source_only")).to eq(:source_only)
+      end
+    end
+
+    it "returns :none when Ruby files do not define documentable objects" do
+      with_source_fixture_gem("empty_source", source: "# intentionally empty\n") do
+        registry = described_class.new
+
+        expect(registry.doc_source_for("empty_source")).to eq(:none)
+      end
+    end
+  end
+
   describe "#find_object" do
     it "walks inherited namespaces to resolve inherited instance methods" do
       with_source_fixture_gem("inheritance_fixture", source: <<~RUBY) do
