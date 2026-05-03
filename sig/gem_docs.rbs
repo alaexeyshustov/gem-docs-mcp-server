@@ -300,6 +300,12 @@ module GemDocs::Commands
 
   class List < Base
     def call: (**untyped) -> Integer
+
+    private
+
+    def installed_specs: -> Array[Gem::Specification]
+    def doc_registry: -> GemDocs::DocRegistry
+    def gem_payload: (Gem::Specification spec) -> Hash[Symbol, untyped]
   end
 
   class Lookup < Base
