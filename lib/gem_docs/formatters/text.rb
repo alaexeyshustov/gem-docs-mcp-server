@@ -53,10 +53,40 @@ module GemDocs
       end
 
       def classes(gem:, entries:)
-        build_sections(
-          "#{gem} classes",
-          *entries.map { |entry| "- #{normalize_entry(entry).fetch(:path)}" }
+        normalized_entries = entries.map do |entry|
+          normalized_entry = normalize_entry(entry)
+          name = normalized_entry[:path] || normalized_entry.fetch(:name)
+          type = normalized_entry.key?(:type) ? normalized_entry[:type] : normalized_entry.fetch(:kind).to_s
+          summary = normalized_entry.key?(:summary) ? normalized_entry[:summary] : normalized_entry[:docstring].to_s
+          {
+            name: name,
+            type: type,
+            summary: summary,
+            method_count: normalized_entry.fetch(:method_count, 0)
+          }
+        end
+
+        widths = column_widths(
+          normalized_entries.map do |entry|
+            [
+              entry.fetch(:name),
+              entry.fetch(:type),
+              method_count_label(entry.fetch(:method_count))
+            ]
+          end
         )
+
+        normalized_entries.map do |entry|
+          line = format_row(
+            [
+              entry.fetch(:name),
+              entry.fetch(:type),
+              method_count_label(entry.fetch(:method_count))
+            ],
+            widths
+          )
+          [ line, entry.fetch(:summary) ].reject(&:empty?).join("  ")
+        end.join("\n")
       end
 
       def lookup(result:)
@@ -100,6 +130,11 @@ module GemDocs
         return if source_location.nil? || source_location.empty?
 
         "Source: #{source_location}"
+      end
+
+      def method_count_label(method_count)
+        noun = method_count == 1 ? "method" : "methods"
+        "(#{method_count} #{noun})"
       end
     end
   end

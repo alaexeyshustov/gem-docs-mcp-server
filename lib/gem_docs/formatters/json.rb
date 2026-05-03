@@ -35,12 +35,22 @@ module GemDocs
       end
 
       def classes(gem:, entries:)
-        call(
-          compact_value(
-            gem: gem,
-            classes: entries.map { |entry| compact_value(normalize_entry(entry)) }
-          )
-        )
+        payload = entries.map do |entry|
+          normalized_entry = normalize_entry(entry)
+          name = normalized_entry[:path] || normalized_entry.fetch(:name)
+          type = normalized_entry.key?(:type) ? normalized_entry[:type] : normalized_entry.fetch(:kind).to_s
+          summary = normalized_entry.key?(:summary) ? normalized_entry[:summary] : normalized_entry[:docstring].to_s
+          payload_entry = {
+            name: name,
+            type: type,
+            summary: summary,
+            method_count: normalized_entry.fetch(:method_count, 0)
+          }
+          payload_entry[:superclass] = normalized_entry[:superclass] if normalized_entry[:superclass]
+          payload_entry
+        end
+
+        call(payload)
       end
 
       def lookup(result:)
