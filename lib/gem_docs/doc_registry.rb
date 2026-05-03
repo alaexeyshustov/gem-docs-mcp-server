@@ -125,31 +125,39 @@ module GemDocs
     end
 
     def load_gem(name, version: nil)
-      cache_key = version.nil? || version.empty? ? name : [ name, version ].freeze
+      cache_key = cache_key_for(name, version)
       loaded_gem = @loaded_gems[cache_key]
       return loaded_gem if loaded_gem
 
-      spec = if version.nil? || version.empty?
+      normalized_version = normalize_version(version)
+
+      spec = if normalized_version.nil?
         self.class.gem_spec_for(name)
       else
-        self.class.gem_spec_for(name, version: version)
+        self.class.gem_spec_for(name, version: normalized_version)
       end
       raise GemDocs::GemNotFound.new(name) unless spec
 
       loaded_gem = build_loaded_gem(spec)
-      @doc_sources[name] = loaded_gem.doc_source
+      @doc_sources[cache_key] = loaded_gem.doc_source
       @loaded_gems[cache_key] = loaded_gem
     end
 
-    def doc_source_for(name, spec: nil)
-      loaded_gem = @loaded_gems[name]
+    def doc_source_for(name, version: nil, spec: nil)
+      cache_key = cache_key_for(name, version || spec&.version&.to_s)
+      loaded_gem = @loaded_gems[cache_key]
       return loaded_gem.doc_source if loaded_gem
 
-      spec ||= self.class.gem_spec_for(name)
+      normalized_version = normalize_version(version)
+      spec ||= if normalized_version.nil?
+        self.class.gem_spec_for(name)
+      else
+        self.class.gem_spec_for(name, version: normalized_version)
+      end
       raise GemDocs::GemNotFound.new(name) unless spec
 
-      @doc_sources.fetch(name) do
-        @doc_sources[name] = detect_doc_source(spec)
+      @doc_sources.fetch(cache_key) do
+        @doc_sources[cache_key] = detect_doc_source(spec)
       end
     end
 
@@ -170,6 +178,19 @@ module GemDocs
       return :source_only if source_objects_available?(spec)
 
       :none
+    end
+
+    def cache_key_for(name, version)
+      normalized_version = normalize_version(version)
+      return name if normalized_version.nil?
+
+      [ name, normalized_version ].freeze
+    end
+
+    def normalize_version(version)
+      return nil if version.nil? || version.empty?
+
+      version
     end
 
     def build_loaded_gem(spec)

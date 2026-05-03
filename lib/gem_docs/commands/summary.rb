@@ -5,7 +5,7 @@ module GemDocs
     class Summary < Base
       desc "Summarize a gem"
       argument :gem_name, type: :string
-      option :version, values: [], default: "", desc: "Gem version"
+      option :version, desc: "Gem version"
 
       def call(gem_name:, version: nil, format: "text", **_kwargs)
         out.puts GemDocs::Formatters.for(format).summary(gem: summary_payload(doc_registry.load_gem(gem_name, version: version)))

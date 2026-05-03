@@ -102,4 +102,26 @@ RSpec.describe GemDocs::CLI do
       "message" => "Gem 'missing-gem' is not installed"
     )
   end
+
+  it "accepts --version for the summary command" do
+    registry = instance_double(
+      GemDocs::DocRegistry,
+      load_gem: GemDocs::DocRegistry::LoadedGem.new(
+        name: "faraday",
+        version: "2.12.0",
+        summary: "HTTP client",
+        description: "HTTP client",
+        path: "/tmp/faraday",
+        doc_source: :yard,
+        objects: []
+      )
+    )
+    allow(GemDocs::DocRegistry).to receive(:new).and_return(registry)
+
+    status = described_class.start([ "summary", "faraday", "--version", "2.12.0" ], out: stdout, err: stderr)
+
+    expect(status).to eq(0)
+    expect(stderr.string).to eq("")
+    expect(registry).to have_received(:load_gem).with("faraday", version: "2.12.0")
+  end
 end

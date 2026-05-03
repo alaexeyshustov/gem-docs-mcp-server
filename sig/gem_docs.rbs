@@ -145,13 +145,15 @@ module GemDocs
 
     def initialize: (?shell_runner: ^(Array[String]) -> command_response) -> void
     def load_gem: (String name, ?version: String?) -> LoadedGem
-    def doc_source_for: (String name, ?spec: Gem::Specification?) -> doc_source
+    def doc_source_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def find_object: (String path, gem_name: String) -> Entry?
     def classes_for: (String gem_name) -> Array[Entry]
 
     private
 
     def detect_doc_source: (Gem::Specification spec) -> doc_source
+    def cache_key_for: (String name, String? version) -> (String | [String, String])
+    def normalize_version: (String? version) -> String?
     def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
     def load_yard_objects: (String yardoc) -> Array[Entry]
     def gem_description: (Gem::Specification spec) -> String?
