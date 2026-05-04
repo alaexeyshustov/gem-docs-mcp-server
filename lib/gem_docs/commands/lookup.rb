@@ -71,7 +71,9 @@ module GemDocs
 
         suffix_index = normalized_candidate.rindex(normalized_query)
         prefix = suffix_index ? normalized_candidate[0...suffix_index].to_s : ""
-        return true if !prefix.empty? && prefix.end_with?("::", "#", ".")
+        suffix = suffix_index ? normalized_candidate[(suffix_index + normalized_query.length)..].to_s : ""
+        boundary_match = suffix.empty? || suffix.start_with?("::", "#", ".")
+        return true if !prefix.empty? && prefix.end_with?("::", "#", ".") && boundary_match
 
         normalized_candidate.end_with?("::#{normalized_query}") ||
           normalized_candidate.end_with?("##{normalized_query}") ||
