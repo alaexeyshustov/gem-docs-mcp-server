@@ -1,53 +1,11 @@
 # frozen_string_literal: true
 
-require "fileutils"
 require "json"
 require "stringio"
-require "tmpdir"
-require "yard"
 require "spec_helper"
 require "gem_docs"
 
 RSpec.describe GemDocs::CLI do
-  def build_fixture_spec(name:, gem_root:, version: "0.1.0", summary: "Fixture gem")
-    Gem::Specification.new do |spec|
-      spec.name = name
-      spec.version = version
-      spec.summary = summary
-      spec.files = Dir.chdir(gem_root) { Dir["lib/**/*.rb"] }
-      spec.require_paths = [ "lib" ]
-    end.tap do |spec|
-      spec.define_singleton_method(:full_gem_path) { gem_root }
-      spec.define_singleton_method(:doc_dir) { File.join(gem_root, "doc") }
-    end
-  end
-
-  def with_yard_fixture_gem(name:, version: "0.1.0", source:)
-    Dir.mktmpdir do |tmpdir|
-      gem_root = File.join(tmpdir, name)
-      file = File.join(gem_root, "lib", "#{name}.rb")
-      yardoc = File.join(gem_root, ".yardoc")
-      FileUtils.mkdir_p(File.dirname(file))
-      File.write(file, source)
-
-      previous_yardoc = YARD::Registry.yardoc_file
-      YARD::Registry.clear
-      YARD.parse(file)
-      YARD::Registry.save(false, yardoc)
-      YARD::Registry.clear
-      YARD::Registry.yardoc_file = previous_yardoc
-
-      spec = build_fixture_spec(name: name, gem_root: gem_root, version: version)
-      allow(GemDocs::DocRegistry).to receive(:gem_spec_for).with(name).and_return(spec)
-      allow(GemDocs::DocRegistry).to receive(:gem_spec_for).with(name, version: version).and_return(spec)
-
-      yield spec
-    ensure
-      YARD::Registry.clear
-      YARD::Registry.yardoc_file = previous_yardoc
-    end
-  end
-
   let(:stdout) { StringIO.new }
   let(:stderr) { StringIO.new }
 
