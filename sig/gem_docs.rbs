@@ -298,12 +298,19 @@ module GemDocs
       def self.for: (String | Symbol format) -> Base
 
       class Base < GemDocs::Formatters::Base
+        MAX_SUMMARY_LENGTH: Integer
+        MAX_CLASSES: Integer
+        MAX_ENTRY_POINTS: Integer
+        MAX_LIST_ITEM_LENGTH: Integer
+
         def call: (gems: Array[untyped]) -> String
 
         private
 
         def documented_gems: (Array[untyped] gems) -> Array[Hash[Symbol, untyped]]
         def gem_sections: (Array[untyped] gems) -> Array[String]
+        def format_list: (untyped values, limit: Integer) -> String
+        def truncate: (untyped value, Integer limit) -> String
       end
 
       class Claude < Base
@@ -363,7 +370,20 @@ module GemDocs::Commands
   end
 
   class Context < Base
-    def call: (**untyped) -> Integer
+    OUTPUT_FILES: Hash[String, String]
+    FORMATS: Array[String]
+
+    def call: (?format: String, ?gems: String?, ?output_dir: String, **untyped) -> Integer
+
+    private
+
+    def doc_registry: -> GemDocs::DocRegistry
+    def project_root: -> String
+    def resolve_formats: (String format) -> Array[String]
+    def resolve_gem_names: (String? gems) -> Array[String]
+    def lockfile_gem_names: -> Array[String]
+    def display_path_for: (String destination) -> String
+    def ensure_directory: (String path) -> void
   end
 
   class List < Base
