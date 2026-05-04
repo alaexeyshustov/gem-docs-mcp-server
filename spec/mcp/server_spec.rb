@@ -55,6 +55,38 @@ RSpec.describe GemDocs::MCP::Server do
       expect(response.dig(:result, :content, 0, :text)).to eq("[{\"name\":\"rack\",\"version\":\"3.2.6\",\"doc_source\":\"yard\"}]\n")
     end
 
+    it "forces delegated tool calls to use JSON formatting" do
+      stub_const("GemDocs::Commands::List", Class.new(GemDocs::Commands::Base) do
+        def call(format: "text", **)
+          out.puts(format)
+          0
+        end
+      end)
+      GemDocs::MCP::Tools::List.command(GemDocs::Commands::List) if defined?(GemDocs::MCP::Tools::List)
+
+      server = described_class.build_fast_mcp_server
+      transport = CapturingTransport.new
+      server.transport = transport
+
+      server.handle_json_request(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "list",
+            arguments: {
+              format: "text"
+            }
+          }
+        }
+      )
+      response = transport.messages.last
+
+      expect(response.dig(:result, :isError)).to be(false)
+      expect(response.dig(:result, :content, 0, :text)).to eq("json\n")
+    end
+
     it "returns the shared CLI JSON error envelope when a delegated command fails" do
       stub_const("GemDocs::Commands::Summary", Class.new(GemDocs::Commands::Base) do
         def call(**)
@@ -170,7 +202,8 @@ RSpec.describe GemDocs::MCP::Server do
         fast_mcp_server,
         host: "0.0.0.0",
         port: 7001,
-        out: anything
+        out: anything,
+        err: anything
       )
     end
   end
@@ -222,6 +255,52 @@ RSpec.describe GemDocs::MCP::Server do
       expect(written_response).to include("413 Payload Too Large")
     end
 
+    it "normalizes request header names before reading the body and building rack env" do
+      socket = double("Socket")
+      written_response = +""
+      received_env = nil
+
+      allow(socket).to receive(:gets).with("\r\n").and_return(
+        "POST /mcp/messages HTTP/1.1\r\n",
+        "content-length: 7\r\n",
+        "content-type: application/json\r\n",
+        "\r\n"
+      )
+      allow(socket).to receive(:read).with(7).and_return("{\"a\":1}")
+      allow(described_class).to receive(:wait_for_socket_data).and_yield
+      allow(socket).to receive(:peeraddr).with(false).and_return([ nil, nil, nil, "127.0.0.1" ])
+      allow(socket).to receive(:write) do |chunk|
+        written_response << chunk
+      end
+
+      described_class.send(
+        :handle_http_connection,
+        socket,
+        lambda do |env|
+          received_env = env
+          [ 200, { "Content-Type" => "application/json" }, [ "{\"ok\":true}" ] ]
+        end,
+        host: "127.0.0.1",
+        port: 6040
+      )
+
+      expect(received_env.fetch("CONTENT_LENGTH")).to eq("7")
+      expect(received_env.fetch("CONTENT_TYPE")).to eq("application/json")
+      expect(received_env.fetch("rack.input").read).to eq("{\"a\":1}")
+      expect(written_response).to include("200 OK")
+    end
+
+    it "returns a structured not found payload" do
+      status, headers, body = described_class.send(:not_found_response, "/missing")
+
+      expect(status).to eq(404)
+      expect(headers).to eq("Content-Type" => "application/json")
+      expect(JSON.parse(body.fetch(0))).to eq(
+        "error" => "not_found",
+        "message" => "No MCP endpoint matches /missing"
+      )
+    end
+
     it "keeps the HTTP accept loop running when a request crashes" do
       listener = instance_double("TCPServer")
       socket = instance_double("Socket", closed?: false)
@@ -241,8 +320,25 @@ RSpec.describe GemDocs::MCP::Server do
       allow(socket).to receive(:close)
 
       expect do
-        described_class.send(:serve_http, :app, host: "127.0.0.1", port: 6040)
+        described_class.send(:serve_http, :app, host: "127.0.0.1", port: 6040, out: StringIO.new)
       end.to raise_error(Interrupt)
+    end
+  end
+
+  describe ".run_http" do
+    it "returns a non-zero status when the HTTP listener cannot bind" do
+      fast_mcp_server = instance_double(FastMcp::Server, start_rack: :app)
+      out = StringIO.new
+      err = StringIO.new
+
+      allow(described_class).to receive(:serve_http)
+        .with(:app, host: "127.0.0.1", port: 6040, out: out)
+        .and_raise(Errno::EADDRINUSE, "Address already in use")
+
+      status = described_class.send(:run_http, fast_mcp_server, host: "127.0.0.1", port: 6040, out: out, err: err)
+
+      expect(status).to eq(1)
+      expect(err.string).to include("gem-docs MCP HTTP server failed to bind 127.0.0.1:6040")
     end
   end
 end

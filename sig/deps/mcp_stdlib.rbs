@@ -13,6 +13,9 @@ class TCPServer
   def accept: -> untyped
 end
 
+class SocketError < StandardError
+end
+
 module Timeout
   def self.timeout: [T] (Integer seconds, singleton(StandardError) klass) { () -> T } -> T
 end

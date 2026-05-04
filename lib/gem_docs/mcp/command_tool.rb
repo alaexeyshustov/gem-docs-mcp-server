@@ -39,8 +39,10 @@ module GemDocs
         command.define_singleton_method(:out) { stdout }
         command.define_singleton_method(:err) { stderr }
 
+        command_kwargs = kwargs.merge(format: "json")
+
         status = begin
-          command.call(**kwargs, format: "json")
+          command.call(**command_kwargs)
         rescue GemDocs::Error => e
           command.render_command_error(e, format: "json")
         rescue StandardError => e

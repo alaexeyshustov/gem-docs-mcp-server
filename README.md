@@ -15,6 +15,14 @@ bundle exec exe/gem-docs search Widget --scope classes
 
 The MCP path is optional and only loads `fast-mcp` when you start the server.
 
+Install the optional dependency before using the server entrypoints:
+
+```ruby
+gem "fast-mcp"
+```
+
+Then run `bundle install`.
+
 ### STDIO mode
 
 ```bash

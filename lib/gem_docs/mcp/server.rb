@@ -39,7 +39,8 @@ module GemDocs
             server,
             host: options.fetch(:bind_all) ? "0.0.0.0" : "127.0.0.1",
             port: options.fetch(:port),
-            out: out
+            out: out,
+            err: err
           )
         end
 
@@ -97,22 +98,25 @@ module GemDocs
       end
       private_class_method :parse_options
 
-      def self.run_http(server, host:, port:, out:)
+      def self.run_http(server, host:, port:, out:, err:)
         app = server.start_rack(
-          lambda { |_env| not_found_response },
+          lambda { |env| not_found_response(env["PATH_INFO"]) },
           path_prefix: "/mcp",
           localhost_only: host != "0.0.0.0"
         )
-        out.puts "gem-docs MCP server listening on http://#{host}:#{port}/mcp"
-        serve_http(app, host: host, port: port)
+        serve_http(app, host: host, port: port, out: out)
         0
       rescue Interrupt
         0
+      rescue Errno::EACCES, Errno::EADDRINUSE, Errno::EADDRNOTAVAIL, SocketError => e
+        err.puts "gem-docs MCP HTTP server failed to bind #{host}:#{port}: #{e.message}"
+        1
       end
       private_class_method :run_http
 
-      def self.serve_http(app, host:, port:)
+      def self.serve_http(app, host:, port:, out:)
         TCPServer.open(host, port) do |listener|
+          out.puts "gem-docs MCP server listening on http://#{host}:#{port}/mcp"
           loop do
             socket = listener.accept
             handle_http_connection(socket, app, host: host, port: port)
@@ -132,7 +136,14 @@ module GemDocs
         return if request_line.nil?
 
         method, request_target, server_protocol = request_line.strip.split(" ", 3)
-        return write_http_response(socket, 400, json_headers, [ JSON.generate(error: "Bad Request") ]) if method.nil? || request_target.nil?
+        if method.nil? || request_target.nil?
+          return write_http_response(
+            socket,
+            400,
+            json_headers,
+            [ JSON.generate(error: "bad_request", message: "Malformed HTTP request line") ]
+          )
+        end
 
         headers = read_http_headers(socket)
         body = read_http_body(socket, headers)
@@ -170,7 +181,10 @@ module GemDocs
           key, value = stripped_line.split(":", 2)
           next if key.nil?
 
-          headers[key] = value.to_s.strip
+          normalized_key = key.strip.downcase
+          next if normalized_key.empty?
+
+          headers[normalized_key] = value.to_s.strip
         end
 
         headers
@@ -178,7 +192,7 @@ module GemDocs
       private_class_method :read_http_headers
 
       def self.read_http_body(socket, headers)
-        content_length = headers.fetch("Content-Length", "0").to_i
+        content_length = headers.fetch("content-length", "0").to_i
         raise RequestTooLargeError, "Request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes" if content_length > MAX_REQUEST_BODY_BYTES
         return "" unless content_length.positive?
 
@@ -239,9 +253,9 @@ module GemDocs
 
         headers.each do |key, value|
           case key
-          when "Content-Length"
+          when "content-length"
             env["CONTENT_LENGTH"] = value
-          when "Content-Type"
+          when "content-type"
             env["CONTENT_TYPE"] = value
           else
             env["HTTP_#{key.upcase.tr('-', '_')}"] = value
@@ -285,11 +299,11 @@ module GemDocs
       end
       private_class_method :http_status_reason
 
-      def self.not_found_response
+      def self.not_found_response(path)
         [
           404,
           json_headers,
-          [ JSON.generate(error: "Not Found") ]
+          [ JSON.generate(error: "not_found", message: "No MCP endpoint matches #{path}") ]
         ]
       end
       private_class_method :not_found_response
