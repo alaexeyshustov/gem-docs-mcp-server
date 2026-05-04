@@ -369,9 +369,13 @@ module GemDocs
       class RequestTooLargeError < StandardError
       end
 
+      class RequestTimeoutError < StandardError
+      end
+
       DEFAULT_MODE: String
       DEFAULT_PORT: Integer
       MAX_REQUEST_BODY_BYTES: Integer
+      SOCKET_READ_TIMEOUT_SECONDS: Integer
       HTTP_STATUS_REASONS: Hash[Integer, String]
 
       def self.start: (?Array[String] arguments, ?out: untyped, ?err: untyped) -> Integer
@@ -386,6 +390,9 @@ module GemDocs
       def self.handle_http_connection: (untyped socket, untyped app, host: String, port: Integer) -> void
       def self.read_http_headers: (untyped socket) -> Hash[String, String]
       def self.read_http_body: (untyped socket, Hash[String, String] headers) -> String
+      def self.read_http_line: (untyped socket) -> String?
+      def self.read_http_chunk: (untyped socket, Integer bytes_to_read) -> String?
+      def self.wait_for_socket_data: { () -> untyped } -> untyped
       def self.rack_env: (
         method: String,
         path: String,

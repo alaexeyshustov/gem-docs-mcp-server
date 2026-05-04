@@ -4,21 +4,26 @@ require "json"
 require "optparse"
 require "socket"
 require "stringio"
+require "timeout"
+require "timeout"
 
 module GemDocs
   module MCP
     class Server
       RequestTooLargeError = Class.new(StandardError)
+      RequestTimeoutError = Class.new(StandardError)
 
       DEFAULT_MODE = "stdio"
       DEFAULT_PORT = 6040
       MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
+      SOCKET_READ_TIMEOUT_SECONDS = 30
       HTTP_STATUS_REASONS = {
         200 => "OK",
         400 => "Bad Request",
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        408 => "Request Timeout",
         413 => "Payload Too Large",
         500 => "Internal Server Error"
       }.freeze
@@ -124,7 +129,7 @@ module GemDocs
       private_class_method :serve_http
 
       def self.handle_http_connection(socket, app, host:, port:)
-        request_line = socket.gets("\r\n")
+        request_line = read_http_line(socket)
         return if request_line.nil?
 
         method, request_target, server_protocol = request_line.strip.split(" ", 3)
@@ -133,10 +138,11 @@ module GemDocs
         headers = read_http_headers(socket)
         body = read_http_body(socket, headers)
         path, query = request_target.to_s.split("?", 2)
+        resolved_path = path.to_s.empty? ? "/" : path.to_s
 
         env = rack_env(
           method: method,
-          path: path.empty? ? "/" : path,
+          path: resolved_path,
           query: query.to_s,
           headers: headers,
           body: body,
@@ -148,6 +154,8 @@ module GemDocs
 
         status, response_headers, response_body = app.call(env)
         write_http_response(socket, status, response_headers, response_body)
+      rescue RequestTimeoutError
+        write_http_response(socket, 408, json_headers, [ JSON.generate(error: "Request Timeout") ])
       rescue RequestTooLargeError
         write_http_response(socket, 413, json_headers, [ JSON.generate(error: "Payload Too Large") ])
       end
@@ -156,11 +164,13 @@ module GemDocs
       def self.read_http_headers(socket)
         headers = {} # @type var headers: Hash[String, String]
 
-        while (line = socket.gets("\r\n"))
+        while (line = read_http_line(socket))
           stripped_line = line.chomp("\r\n")
           break if stripped_line.empty?
 
           key, value = stripped_line.split(":", 2)
+          next if key.nil?
+
           headers[key] = value.to_s.strip
         end
 
@@ -173,9 +183,41 @@ module GemDocs
         raise RequestTooLargeError, "Request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes" if content_length > MAX_REQUEST_BODY_BYTES
         return "" unless content_length.positive?
 
-        socket.read(content_length).to_s
+        buffer = +""
+        while buffer.bytesize < content_length
+          bytes_to_read = [ content_length - buffer.bytesize, 16_384 ].min
+          chunk = read_http_chunk(socket, bytes_to_read)
+          raise RequestTimeoutError, "Connection closed before request body was fully received" if chunk.nil? || chunk.empty?
+
+          buffer << chunk
+        end
+
+        buffer
       end
       private_class_method :read_http_body
+
+      def self.read_http_line(socket)
+        wait_for_socket_data do
+          socket.gets("\r\n")
+        end
+      end
+      private_class_method :read_http_line
+
+      def self.read_http_chunk(socket, bytes_to_read)
+        wait_for_socket_data do
+          socket.read(bytes_to_read)
+        end
+      end
+      private_class_method :read_http_chunk
+
+      def self.wait_for_socket_data
+        Timeout.timeout(SOCKET_READ_TIMEOUT_SECONDS, RequestTimeoutError) do
+          yield
+        end
+      rescue RequestTimeoutError
+        raise RequestTimeoutError, "Timed out waiting for request data"
+      end
+      private_class_method :wait_for_socket_data
 
       def self.rack_env(method:, path:, query:, headers:, body:, host:, port:, server_protocol:, remote_addr:)
         env = {

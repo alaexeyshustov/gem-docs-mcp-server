@@ -142,6 +142,27 @@ RSpec.describe GemDocs::MCP::Server do
   end
 
   describe "HTTP request handling" do
+    it "returns 408 when the client stops sending request data" do
+      socket = instance_double("Socket")
+      written_response = +""
+
+      allow(described_class).to receive(:wait_for_socket_data)
+        .and_raise(described_class::RequestTimeoutError, "timed out waiting for request data")
+      allow(socket).to receive(:write) do |chunk|
+        written_response << chunk
+      end
+
+      described_class.send(
+        :handle_http_connection,
+        socket,
+        ->(_env) { raise "should not reach app" },
+        host: "127.0.0.1",
+        port: 6040
+      )
+
+      expect(written_response).to include("408 Request Timeout")
+    end
+
     it "returns 413 for request bodies above the configured size limit" do
       socket = instance_double("Socket")
       written_response = +""
@@ -151,6 +172,7 @@ RSpec.describe GemDocs::MCP::Server do
         "Content-Length: #{(10 * 1024 * 1024) + 1}\r\n",
         "\r\n"
       )
+      allow(described_class).to receive(:wait_for_socket_data).and_yield
       allow(socket).to receive(:write) do |chunk|
         written_response << chunk
       end

@@ -12,3 +12,7 @@ class TCPServer
   def self.open: (String host, Integer port) { (TCPServer server) -> untyped } -> untyped
   def accept: -> untyped
 end
+
+module Timeout
+  def self.timeout: [T] (Integer seconds, singleton(StandardError) klass) { () -> T } -> T
+end
