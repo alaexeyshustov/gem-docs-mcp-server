@@ -140,4 +140,53 @@ RSpec.describe GemDocs::MCP::Server do
       )
     end
   end
+
+  describe "HTTP request handling" do
+    it "returns 413 for request bodies above the configured size limit" do
+      socket = instance_double("Socket")
+      written_response = +""
+
+      allow(socket).to receive(:gets).with("\r\n").and_return(
+        "POST /mcp/messages HTTP/1.1\r\n",
+        "Content-Length: #{(10 * 1024 * 1024) + 1}\r\n",
+        "\r\n"
+      )
+      allow(socket).to receive(:write) do |chunk|
+        written_response << chunk
+      end
+
+      described_class.send(
+        :handle_http_connection,
+        socket,
+        ->(_env) { raise "should not reach app" },
+        host: "127.0.0.1",
+        port: 6040
+      )
+
+      expect(written_response).to include("413 Payload Too Large")
+    end
+
+    it "keeps the HTTP accept loop running when a request crashes" do
+      listener = instance_double("TCPServer")
+      socket = instance_double("Socket", closed?: false)
+
+      accept_calls = 0
+      allow(TCPServer).to receive(:open).with("127.0.0.1", 6040).and_yield(listener)
+      allow(listener).to receive(:accept) do
+        accept_calls += 1
+        raise Interrupt if accept_calls > 1
+
+        socket
+      end
+      allow(described_class).to receive(:warn)
+      allow(described_class).to receive(:handle_http_connection)
+        .with(socket, :app, host: "127.0.0.1", port: 6040)
+        .and_raise(StandardError, "boom")
+      allow(socket).to receive(:close)
+
+      expect do
+        described_class.send(:serve_http, :app, host: "127.0.0.1", port: 6040)
+      end.to raise_error(Interrupt)
+    end
+  end
 end

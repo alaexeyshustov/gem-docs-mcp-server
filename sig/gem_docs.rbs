@@ -366,8 +366,12 @@ module GemDocs
     end
 
     class Server
+      class RequestTooLargeError < StandardError
+      end
+
       DEFAULT_MODE: String
       DEFAULT_PORT: Integer
+      MAX_REQUEST_BODY_BYTES: Integer
       HTTP_STATUS_REASONS: Hash[Integer, String]
 
       def self.start: (?Array[String] arguments, ?out: untyped, ?err: untyped) -> Integer
@@ -396,6 +400,7 @@ module GemDocs
       def self.write_http_response: (untyped socket, Integer status, Hash[untyped, untyped] headers, untyped body) -> void
       def self.http_status_reason: (Integer status) -> String
       def self.not_found_response: -> [Integer, Hash[String, String], Array[String]]
+      def self.json_headers: -> Hash[String, String]
     end
   end
 end

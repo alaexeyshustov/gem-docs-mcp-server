@@ -8,14 +8,18 @@ require "stringio"
 module GemDocs
   module MCP
     class Server
+      RequestTooLargeError = Class.new(StandardError)
+
       DEFAULT_MODE = "stdio"
       DEFAULT_PORT = 6040
+      MAX_REQUEST_BODY_BYTES = 10 * 1024 * 1024
       HTTP_STATUS_REASONS = {
         200 => "OK",
         400 => "Bad Request",
         403 => "Forbidden",
         404 => "Not Found",
         405 => "Method Not Allowed",
+        413 => "Payload Too Large",
         500 => "Internal Server Error"
       }.freeze
 
@@ -108,6 +112,10 @@ module GemDocs
           loop do
             socket = listener.accept
             handle_http_connection(socket, app, host: host, port: port)
+          rescue Interrupt
+            raise
+          rescue StandardError => e
+            warn "gem-docs MCP HTTP server error: #{e.class}: #{e.message}"
           ensure
             socket&.close unless socket&.closed?
           end
@@ -120,6 +128,8 @@ module GemDocs
         return if request_line.nil?
 
         method, request_target, server_protocol = request_line.strip.split(" ", 3)
+        return write_http_response(socket, 400, json_headers, [ JSON.generate(error: "Bad Request") ]) if method.nil? || request_target.nil?
+
         headers = read_http_headers(socket)
         body = read_http_body(socket, headers)
         path, query = request_target.to_s.split("?", 2)
@@ -138,6 +148,8 @@ module GemDocs
 
         status, response_headers, response_body = app.call(env)
         write_http_response(socket, status, response_headers, response_body)
+      rescue RequestTooLargeError
+        write_http_response(socket, 413, json_headers, [ JSON.generate(error: "Payload Too Large") ])
       end
       private_class_method :handle_http_connection
 
@@ -158,6 +170,7 @@ module GemDocs
 
       def self.read_http_body(socket, headers)
         content_length = headers.fetch("Content-Length", "0").to_i
+        raise RequestTooLargeError, "Request body exceeds #{MAX_REQUEST_BODY_BYTES} bytes" if content_length > MAX_REQUEST_BODY_BYTES
         return "" unless content_length.positive?
 
         socket.read(content_length).to_s
@@ -227,11 +240,16 @@ module GemDocs
       def self.not_found_response
         [
           404,
-          { "Content-Type" => "application/json" },
+          json_headers,
           [ JSON.generate(error: "Not Found") ]
         ]
       end
       private_class_method :not_found_response
+
+      def self.json_headers
+        { "Content-Type" => "application/json" }
+      end
+      private_class_method :json_headers
     end
   end
 end
