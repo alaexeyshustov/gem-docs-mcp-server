@@ -1,85 +1,25 @@
 # frozen_string_literal: true
 
-require "fileutils"
 require "tmpdir"
-require "yard"
 require "spec_helper"
 require "gem_docs"
 
 RSpec.describe GemDocs::DocRegistry do
-  def build_fixture_spec(name, gem_root:, summary: "Fixture gem", version: "0.1.0")
-    Gem::Specification.new do |spec|
-      spec.name = name
-      spec.version = version
-      spec.summary = summary
-      spec.files = Dir.chdir(gem_root) { Dir["lib/**/*.rb"] }
-      spec.require_paths = [ "lib" ]
-    end.tap do |spec|
-      spec.define_singleton_method(:full_gem_path) { gem_root }
-      spec.define_singleton_method(:doc_dir) { File.join(gem_root, "doc") }
-    end
-  end
-
-  def with_source_fixture_gem(name, source:)
-    Dir.mktmpdir do |tmpdir|
-      gem_root = File.join(tmpdir, name)
-      FileUtils.mkdir_p(File.join(gem_root, "lib"))
-      File.write(File.join(gem_root, "lib", "#{name}.rb"), source)
-      spec = build_fixture_spec(name, gem_root: gem_root)
-
-      allow(described_class).to receive(:gem_spec_for).with(name).and_return(spec)
-
-      yield spec
-    end
-  end
-
-  def with_empty_fixture_gem(name)
-    Dir.mktmpdir do |tmpdir|
-      gem_root = File.join(tmpdir, name)
-      FileUtils.mkdir_p(gem_root)
-      spec = build_fixture_spec(name, gem_root: gem_root)
-
-      allow(described_class).to receive(:gem_spec_for).with(name).and_return(spec)
-
-      yield spec
-    end
-  end
-
-  def with_yard_fixture_gem(name, source:)
-    Dir.mktmpdir do |tmpdir|
-      gem_root = File.join(tmpdir, name)
-      file = File.join(gem_root, "lib", "#{name}.rb")
-      yardoc = File.join(gem_root, ".yardoc")
-      FileUtils.mkdir_p(File.dirname(file))
-      File.write(file, source)
-
-      previous_yardoc = YARD::Registry.yardoc_file
-      YARD::Registry.clear
-      YARD.parse(file)
-      YARD::Registry.save(false, yardoc)
-      YARD::Registry.clear
-      YARD::Registry.yardoc_file = previous_yardoc
-
-      spec = build_fixture_spec(name, gem_root: gem_root)
-      allow(described_class).to receive(:gem_spec_for).with(name).and_return(spec)
-
-      yield spec
-    ensure
-      YARD::Registry.clear
-      YARD::Registry.yardoc_file = previous_yardoc
-    end
-  end
-
   describe "#load_gem" do
+    it "loads the shared local YARD fixture through the shared helper" do
+      stub_fixture_gem("yard", name: "yard_fixture", yard: true) do
+        registry = described_class.new
+
+        loaded_gem = registry.load_gem("yard_fixture")
+
+        expect(loaded_gem.doc_source).to eq(:yard)
+        expect(registry.find_object("YardFixture::Widget#call", gem_name: "yard_fixture")&.docstring)
+          .to include("Performs work.")
+      end
+    end
+
     it "falls back to Prism source parsing when structured docs are unavailable" do
-      with_source_fixture_gem("source_only", source: <<~RUBY) do
-        module SourceOnly
-          class Widget
-            def call(input)
-            end
-          end
-        end
-      RUBY
+      stub_fixture_gem("source_only", registry_class: described_class) do
         registry = described_class.new
 
         loaded_gem = registry.load_gem("source_only")
@@ -132,8 +72,7 @@ RSpec.describe GemDocs::DocRegistry do
     end
 
     it "falls back to ri data when a gem has no .yardoc cache" do
-      with_source_fixture_gem("rdoc_only", source: "# intentionally empty\n") do |spec|
-        FileUtils.mkdir_p(spec.doc_dir)
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
         commands = []
 
         shell_runner = lambda do |command|
@@ -289,8 +228,7 @@ RSpec.describe GemDocs::DocRegistry do
     end
 
     it "uses ri index availability without loading ri objects" do
-      with_source_fixture_gem("rdoc_only", source: "# intentionally empty\n") do |spec|
-        FileUtils.mkdir_p(spec.doc_dir)
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
         commands = []
 
         shell_runner = lambda do |command|
