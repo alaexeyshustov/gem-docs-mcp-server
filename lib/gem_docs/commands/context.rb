@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "bundler"
+
 module GemDocs
   module Commands
     class Context < Base
@@ -55,25 +57,12 @@ module GemDocs
       end
 
       def lockfile_gem_names
-        dependency_lines = false
-
-        File.readlines(File.join(project_root, "Gemfile.lock"), chomp: true).filter_map do |line|
-          stripped = line.strip
-          if stripped == "DEPENDENCIES"
-            dependency_lines = true
-            next
-          end
-
-          if dependency_lines && !line.start_with?(" ")
-            dependency_lines = false
-            next
-          end
-
-          next unless dependency_lines
-          next if stripped.empty?
-
-          stripped.split(/[ (!]/).first
-        end.reject { |name| config.exclude_gems.include?(name) }.uniq
+        Bundler::LockfileParser
+          .new(Bundler.read_file(File.join(project_root, "Gemfile.lock")))
+          .dependencies
+          .keys
+          .reject { |name| config.exclude_gems.include?(name) }
+          .uniq
       rescue Errno::ENOENT
         raise GemDocs::ConfigurationError.new("Gemfile.lock not found in #{project_root}")
       end

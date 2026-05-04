@@ -352,6 +352,7 @@ module GemDocs::Commands
 
     def config: -> GemDocs::Config
     def formatted_error: (GemDocs::Error error, format: String) -> String
+    def formatter_for_error: (String format) -> GemDocs::Formatters::Base
   end
 
   class Classes < Base

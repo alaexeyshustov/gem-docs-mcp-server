@@ -124,6 +124,36 @@ RSpec.describe GemDocs::Commands::Context do
     expect(registry).to have_received(:load_gem).with("rack", version: nil)
   end
 
+  it "normalizes non-rubygems lockfile dependencies before loading docs" do
+    File.write(
+      File.join(project_root, "Gemfile.lock"),
+      <<~LOCK
+        GEM
+          remote: https://rubygems.org/
+          specs:
+            path-gem (0.1.0)
+            rack (3.1.0)
+
+        PATH
+          remote: vendor/path-gem
+          specs:
+            path-gem (0.1.0)
+
+        DEPENDENCIES
+          path-gem!
+          rack
+      LOCK
+    )
+
+    allow(registry).to receive(:load_gem).with("path-gem", version: nil).and_return(build_loaded_gem(name: "path-gem"))
+    allow(registry).to receive(:load_gem).with("rack", version: nil).and_return(build_loaded_gem(name: "rack"))
+
+    command.call(format: "claude", output_dir: "context")
+
+    expect(registry).to have_received(:load_gem).with("path-gem", version: nil)
+    expect(registry).to have_received(:load_gem).with("rack", version: nil)
+  end
+
   it "prefers an explicit gem list over Gemfile.lock discovery" do
     File.write(
       File.join(project_root, "Gemfile.lock"),

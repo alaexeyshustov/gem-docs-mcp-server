@@ -1,0 +1,12 @@
+module Bundler
+  def self.read_file: (String path) -> String
+
+  class Dependency
+    attr_reader name: String
+  end
+
+  class LockfileParser
+    def initialize: (String lockfile) -> void
+    def dependencies: -> Hash[String, Dependency]
+  end
+end

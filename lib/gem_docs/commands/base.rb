@@ -27,7 +27,13 @@ module GemDocs
       end
 
       def formatted_error(error, format:)
-        GemDocs::Formatters.for(format).error(error.to_h)
+        formatter_for_error(format).error(error.to_h)
+      end
+
+      def formatter_for_error(format)
+        GemDocs::Formatters.for(format)
+      rescue ArgumentError
+        GemDocs::Formatters.for("text")
       end
     end
   end

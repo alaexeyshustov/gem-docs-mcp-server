@@ -175,6 +175,23 @@ RSpec.describe GemDocs::CLI do
     )
   end
 
+  it "falls back to text errors when a command uses a non-shared format option" do
+    registry = instance_double(GemDocs::DocRegistry)
+    allow(GemDocs::DocRegistry).to receive(:new).and_return(registry)
+    allow(registry).to receive(:load_gem).with("missing-gem", version: nil)
+      .and_raise(GemDocs::GemNotFound.new("missing-gem"))
+
+    status = described_class.start(
+      [ "context", "--format", "claude", "--gems", "missing-gem" ],
+      out: stdout,
+      err: stderr
+    )
+
+    expect(status).to eq(1)
+    expect(stdout.string).to eq("")
+    expect(stderr.string).to eq("Gem 'missing-gem' is not installed\n")
+  end
+
   it "accepts --version for the summary command" do
     registry = instance_double(
       GemDocs::DocRegistry,
