@@ -147,17 +147,32 @@ RSpec.describe GemDocs::Formatters::Text do
   end
 
   describe "#search" do
-    it "renders registry entries without requiring hash access" do
+    it "renders ranked search rows with gem, score, and summary" do
       formatter = described_class.new
 
       output = formatter.search(
         results: [
-          build_entry(path: "Rack::Builder"),
-          build_entry(path: "Rack::Request")
+          { path: "Rack::Builder#call", gem: "rack", type: "method", summary: "Builds Rack apps", score: 0.95 },
+          { path: "Rack::Request", gem: "rack", type: "class", summary: "Represents a Rack request", score: 0.72 }
         ]
       )
 
-      expect(output).to eq("- Rack::Builder\n- Rack::Request")
+      expect(output).to eq(
+        "Rack::Builder#call  rack  0.95  Builds Rack apps\n" \
+        "Rack::Request       rack  0.72  Represents a Rack request"
+      )
+    end
+
+    it "treats nil scores as 0.00" do
+      formatter = described_class.new
+
+      output = formatter.search(
+        results: [
+          { path: "Rack::Builder#call", gem: "rack", score: nil, summary: "Builds Rack apps" }
+        ]
+      )
+
+      expect(output).to eq("Rack::Builder#call  rack  0.00  Builds Rack apps")
     end
   end
 end

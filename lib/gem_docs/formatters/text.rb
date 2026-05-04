@@ -108,7 +108,30 @@ module GemDocs
       end
 
       def search(results:)
-        build_sections(*results.map { |result| "- #{normalize_entry(result).fetch(:path)}" })
+        normalized_results = results.map do |result|
+          normalized_result = normalize_entry(result)
+          {
+            path: normalized_result.fetch(:path),
+            gem: normalized_result[:gem].to_s,
+            score: format("%.2f", normalized_result[:score].to_f),
+            summary: normalized_result.fetch(:summary, normalized_result[:docstring].to_s).to_s
+          }
+        end
+        return "" if normalized_results.empty?
+
+        widths = column_widths(
+          normalized_results.map do |result|
+            [ result.fetch(:path), result.fetch(:gem), result.fetch(:score) ]
+          end
+        )
+
+        normalized_results.map do |result|
+          line = format_row(
+            [ result.fetch(:path), result.fetch(:gem), result.fetch(:score) ],
+            widths
+          ).rstrip
+          [ line, result.fetch(:summary) ].reject(&:empty?).join("  ")
+        end.join("\n")
       end
 
       private

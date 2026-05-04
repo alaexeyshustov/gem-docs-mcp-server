@@ -15,6 +15,14 @@ module GemDocs
     ?error: SystemCallError
   }
 
+  type search_result = {
+    path: String,
+    gem: String,
+    type: String,
+    summary: String,
+    score: Float
+  }
+
   type entry_kind = :class | :module | :instance_method | :class_method | :constant
   type doc_source = :yard | :rdoc | :source_only | :none
 
@@ -240,7 +248,7 @@ module GemDocs
       def summary: (gem: untyped) -> String
       def classes: (entries: Array[untyped]) -> String
       def lookup: (result: untyped) -> String
-      def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
+      def search: (results: Array[GemDocs::search_result]) -> String
 
       private
 
@@ -257,7 +265,7 @@ module GemDocs
       def summary: (gem: untyped) -> String
       def classes: (entries: Array[untyped]) -> String
       def lookup: (result: untyped) -> String
-      def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
+      def search: (results: Array[GemDocs::search_result]) -> String
     end
 
     class Text < Base
@@ -267,7 +275,7 @@ module GemDocs
       def summary: (gem: untyped) -> String
       def classes: (entries: Array[untyped]) -> String
       def lookup: (result: untyped) -> String
-      def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
+      def search: (results: Array[GemDocs::search_result]) -> String
 
       private
 
@@ -384,7 +392,26 @@ module GemDocs::Commands
   end
 
   class Search < Base
-    def call: (**untyped) -> Integer
+    PER_GEM_LIMIT: Integer
+
+    def call: (query: String, ?gem: String?, ?scope: String, ?limit: (String | Integer), ?format: String, **untyped) -> Integer
+
+    private
+
+    def doc_registry: -> GemDocs::DocRegistry
+    def installed_specs: -> Array[Gem::Specification]
+    def search_gem: (String query, String gem_name, scope: String, limit: Integer) -> Array[GemDocs::search_result]
+    def search_all_gems: (String query, scope: String, limit: Integer) -> Array[GemDocs::search_result]
+    def safe_ranked_results_for: (String gem_name, String query, scope: String) -> Array[GemDocs::search_result]
+    def ranked_results_for: (GemDocs::DocRegistry::LoadedGem loaded_gem, String query, scope: String) -> Array[GemDocs::search_result]
+    def searchable_entry?: (GemDocs::DocRegistry::Entry entry, String scope) -> bool
+    def anonymous_entry?: (GemDocs::DocRegistry::Entry entry) -> bool
+    def method_entry?: (GemDocs::DocRegistry::Entry entry) -> bool
+    def class_entry?: (GemDocs::DocRegistry::Entry entry) -> bool
+    def score_for: (GemDocs::DocRegistry::Entry entry, String query) -> Float?
+    def summary_for: (GemDocs::DocRegistry::Entry entry) -> String
+    def search_payload: (GemDocs::DocRegistry::Entry entry, gem_name: String, score: Float) -> GemDocs::search_result
+    def normalize_limit: ((String | Integer) limit) -> Integer
   end
 
   class Summary < Base
