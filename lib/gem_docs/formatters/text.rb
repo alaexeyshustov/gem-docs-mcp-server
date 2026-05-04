@@ -91,12 +91,19 @@ module GemDocs
 
       def lookup(result:)
         normalized_result = normalize_entry(result)
+        metadata = [
+          [ normalized_result[:gem], normalized_result[:version] ].compact.join(" "),
+          normalized_result[:doc_source]
+        ].reject { |value| value.nil? || value.to_s.empty? }.join(" · ")
 
         build_sections(
-          normalized_result.fetch(:path),
+          metadata.empty? ? normalized_result.fetch(:path) : "#{normalized_result.fetch(:path)}  [#{metadata}]",
+          normalized_result[:source_location],
+          nil,
           normalized_result[:signature],
           normalized_result[:docstring],
-          source_location_line(normalized_result[:source_location])
+          tag_sections(normalized_result[:tags]),
+          aliases_section(normalized_result[:aliases])
         )
       end
 
@@ -130,6 +137,66 @@ module GemDocs
         return if source_location.nil? || source_location.empty?
 
         "Source: #{source_location}"
+      end
+
+      def tag_sections(tags)
+        return "" unless tags.is_a?(Hash)
+
+        tags.flat_map do |tag_name, values|
+          case tag_name.to_s
+          when "param"
+            build_param_lines(values)
+          when "return"
+            build_type_lines("Returns", values)
+          when "raise"
+            build_type_lines("Raises", values)
+          when "example"
+            build_example_lines(values)
+          else
+            next
+          end
+        end.compact.join("\n")
+      end
+
+      def build_param_lines(values)
+        return unless values.is_a?(Array) && !values.empty?
+
+        [
+          "Params:",
+          *values.map do |value|
+            next value.to_s unless value.is_a?(Hash)
+
+            types = Array(value[:types]).join(" | ")
+            [ "  #{value[:name]}", types, value[:text] ].reject(&:empty?).join("  ")
+          end
+        ].compact
+      end
+
+      def build_type_lines(title, values)
+        return unless values.is_a?(Array)
+
+        value = values.first
+        return unless value.is_a?(Hash)
+
+        raw_types = value.fetch(:types, nil)
+        types = raw_types.is_a?(Array) ? raw_types.map { |type| type.to_s }.join(" | ") : ""
+        [ title + ":", types, value.fetch(:text, "").to_s ].reject(&:empty?).join("  ")
+      end
+
+      def build_example_lines(values)
+        return unless values.is_a?(Array) && !values.empty?
+
+        [
+          "Example:",
+          *values.map { |value| "  #{value}" }
+        ]
+      end
+
+      def aliases_section(aliases)
+        aliases = Array(aliases)
+        return if aliases.empty?
+
+        "Aliases: #{aliases.join(', ')}"
       end
 
       def method_count_label(method_count)

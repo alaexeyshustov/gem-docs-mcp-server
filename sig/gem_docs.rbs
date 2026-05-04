@@ -75,6 +75,19 @@ module GemDocs
     def error_code: -> String
   end
 
+  class LookupNotFound < Error
+    def initialize: (String path, ?message: String?) -> void
+    def error_code: -> String
+  end
+
+  class AmbiguousLookup < Error
+    attr_reader candidates: Array[String]
+
+    def initialize: (String path, candidates: Array[String]) -> void
+    def error_code: -> String
+    def to_h: -> Hash[Symbol, untyped]
+  end
+
   class ConfigurationError < Error
     def error_code: -> String
   end
@@ -90,6 +103,8 @@ module GemDocs
       attr_reader source_location: String?
       attr_reader superclass: String?
       attr_reader doc_source: doc_source
+      attr_reader tags: Hash[Symbol, untyped]
+      attr_reader aliases: Array[String]
 
       def initialize: (
         path: String,
@@ -100,7 +115,9 @@ module GemDocs
         signature: String,
         source_location: String?,
         superclass: String?,
-        doc_source: doc_source
+        doc_source: doc_source,
+        tags: Hash[Symbol, untyped],
+        aliases: Array[String]
       ) -> void
       def class_or_module?: -> bool
       def to_h: -> Hash[Symbol, untyped]
@@ -148,6 +165,7 @@ module GemDocs
     def doc_source_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def find_object: (String path, gem_name: String) -> Entry?
     def classes_for: (String gem_name) -> Array[Entry]
+    def find_core_object: (String path) -> Entry?
 
     private
 
@@ -182,10 +200,14 @@ module GemDocs
     def format_source_location: (String file, Integer line) -> String
     def yard_source_location: (YARD::CodeObjects::BaseObject object) -> String?
     def yard_superclass: (YARD::CodeObjects::NamespaceObject object) -> String?
+    def yard_tags: (untyped object) -> Hash[Symbol, untyped]
+    def normalize_yard_tag: (untyped tag) -> (Hash[Symbol, untyped] | String)?
+    def yard_aliases: (untyped object) -> Array[String]
     def parse_rdoc_output: (String output) -> [String, String]
     def rdoc_kind_for: (String path, String signature) -> entry_kind
     def ri_list_command: (Gem::Specification spec) -> Array[String]
     def ri_command: (Gem::Specification spec, *String arguments) -> Array[String]
+    def ri_core_command: (*String arguments) -> Array[String]
     def run_shell: (*String command) -> command_response
     def run_command: (Array[String] command) -> command_response
     def command_execution_failed?: (command_response response) -> bool
@@ -217,7 +239,7 @@ module GemDocs
       def list: (gems: Array[untyped]) -> String
       def summary: (gem: untyped) -> String
       def classes: (entries: Array[untyped]) -> String
-      def lookup: (result: GemDocs::DocRegistry::Entry) -> String
+      def lookup: (result: untyped) -> String
       def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
 
       private
@@ -234,7 +256,7 @@ module GemDocs
       def list: (gems: Array[untyped]) -> String
       def summary: (gem: untyped) -> String
       def classes: (entries: Array[untyped]) -> String
-      def lookup: (result: GemDocs::DocRegistry::Entry) -> String
+      def lookup: (result: untyped) -> String
       def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
     end
 
@@ -244,7 +266,7 @@ module GemDocs
       def list: (gems: Array[Hash[Symbol, untyped]]) -> String
       def summary: (gem: untyped) -> String
       def classes: (entries: Array[untyped]) -> String
-      def lookup: (result: GemDocs::DocRegistry::Entry) -> String
+      def lookup: (result: untyped) -> String
       def search: (results: Array[GemDocs::DocRegistry::Entry]) -> String
 
       private
@@ -255,6 +277,11 @@ module GemDocs
       def method_count_label: (Integer method_count) -> String
       def section: (String title, Array[String]? values) -> String?
       def source_location_line: (String? source_location) -> String?
+      def tag_sections: (untyped tags) -> String
+      def build_param_lines: (untyped values) -> Array[String]?
+      def build_type_lines: (String title, untyped values) -> String?
+      def build_example_lines: (untyped values) -> Array[String]?
+      def aliases_section: (untyped aliases) -> String?
     end
 
     module Context
@@ -342,7 +369,18 @@ module GemDocs::Commands
   end
 
   class Lookup < Base
-    def call: (**untyped) -> Integer
+    def call: (path: String, ?gem: String?, ?format: String, **untyped) -> Integer
+
+    private
+
+    def doc_registry: -> GemDocs::DocRegistry
+    def installed_specs: -> Array[Gem::Specification]
+    def resolve: (String path, gem_name: String?) -> Hash[Symbol, untyped]
+    def resolve_in_gem: (String path, String gem_name) -> Hash[Symbol, untyped]
+    def lookup_matches: (String path, String gem_name) -> Array[Hash[Symbol, untyped]]
+    def fuzzy_match?: (String candidate_path, String query) -> bool
+    def candidate_labels: (Array[Hash[Symbol, untyped]] matches) -> Array[String]
+    def lookup_payload: (Hash[Symbol, untyped] result) -> Hash[Symbol, untyped]
   end
 
   class Search < Base

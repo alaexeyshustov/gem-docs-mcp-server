@@ -18,7 +18,9 @@ module GemDocs
       :signature,
       :source_location,
       :superclass,
-      :doc_source
+      :doc_source,
+      :tags,
+      :aliases
     )
       def class_or_module?
         kind == :class || kind == :module
@@ -168,6 +170,26 @@ module GemDocs
 
     def classes_for(gem_name)
       load_gem(gem_name).classes.sort_by(&:path)
+    end
+
+    def find_core_object(path)
+      response = run_shell(*ri_core_command(path))
+      return unless response[:success]
+
+      signature, docstring = parse_rdoc_output(response[:stdout])
+      Entry.new(
+        path: path,
+        name: path.split(/[#.]/).last,
+        kind: rdoc_kind_for(path, signature),
+        visibility: :public,
+        docstring: docstring,
+        signature: signature.empty? ? path : signature,
+        source_location: nil,
+        superclass: nil,
+        doc_source: :rdoc,
+        tags: {},
+        aliases: []
+      )
     end
 
     private
@@ -360,7 +382,9 @@ module GemDocs
         signature: name,
         source_location: nil,
         superclass: nil,
-        doc_source: :rdoc
+        doc_source: :rdoc,
+        tags: {},
+        aliases: []
       )
     end
 
@@ -378,7 +402,9 @@ module GemDocs
         signature: signature.empty? ? path : signature,
         source_location: nil,
         superclass: nil,
-        doc_source: :rdoc
+        doc_source: :rdoc,
+        tags: {},
+        aliases: []
       )
     end
 
@@ -392,7 +418,9 @@ module GemDocs
         signature: object.path,
         source_location: yard_source_location(object),
         superclass: yard_superclass(object),
-        doc_source: :yard
+        doc_source: :yard,
+        tags: yard_tags(object),
+        aliases: yard_aliases(object)
       )
     end
 
@@ -406,7 +434,9 @@ module GemDocs
         signature: object.signature || object.path,
         source_location: yard_source_location(object),
         superclass: nil,
-        doc_source: :yard
+        doc_source: :yard,
+        tags: yard_tags(object),
+        aliases: yard_aliases(object)
       )
     end
 
@@ -420,7 +450,9 @@ module GemDocs
         signature: object.path,
         source_location: yard_source_location(object),
         superclass: nil,
-        doc_source: :yard
+        doc_source: :yard,
+        tags: yard_tags(object),
+        aliases: yard_aliases(object)
       )
     end
 
@@ -517,7 +549,9 @@ module GemDocs
             signature: build_method_signature(namespace_path, node, class_method: class_method),
             source_location: format_source_location(file, node.location.start_line),
             superclass: nil,
-            doc_source: :source_only
+            doc_source: :source_only,
+            tags: {},
+            aliases: []
           )
         when Prism::ConstantWriteNode
           constant_path = join_constant_path(namespace_path, node.name.to_s)
@@ -530,7 +564,9 @@ module GemDocs
             signature: constant_path,
             source_location: format_source_location(file, node.location.start_line),
             superclass: nil,
-            doc_source: :source_only
+            doc_source: :source_only,
+            tags: {},
+            aliases: []
           )
         else
           push_children(stack, node, namespace_path, class_method_context)
@@ -550,7 +586,9 @@ module GemDocs
         signature: path,
         source_location: format_source_location(file, line),
         superclass: superclass,
-        doc_source: :source_only
+        doc_source: :source_only,
+        tags: {},
+        aliases: []
       )
     end
 
@@ -617,6 +655,36 @@ module GemDocs
       superclass.respond_to?(:path) ? superclass.path : superclass.to_s
     end
 
+    def yard_tags(object)
+      return {} unless object.respond_to?(:tags)
+
+      object.tags.each_with_object({}) do |tag, grouped_tags|
+        normalized = normalize_yard_tag(tag)
+        next if normalized.nil?
+
+        grouped_tags[tag.tag_name.to_sym] ||= []
+        grouped_tags[tag.tag_name.to_sym] << normalized
+      end
+    end
+
+    def normalize_yard_tag(tag)
+      return tag.text.to_s.strip if tag.tag_name == "example"
+
+      payload = {}
+      payload[:name] = tag.name if tag.respond_to?(:name) && tag.name
+      payload[:types] = Array(tag.types).map(&:to_s) if tag.respond_to?(:types)
+      payload[:text] = tag.text.to_s.strip
+      payload
+    end
+
+    def yard_aliases(object)
+      return [] unless object.respond_to?(:aliases)
+
+      Array(object.aliases).filter_map do |alias_object|
+        alias_object.respond_to?(:path) ? alias_object.path : alias_object.to_s
+      end
+    end
+
     def parse_rdoc_output(output)
       lines = output.lines.map(&:rstrip)
       signature = lines.first.to_s.strip
@@ -645,6 +713,10 @@ module GemDocs
 
     def ri_command(spec, *arguments)
       [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "--", *arguments ]
+    end
+
+    def ri_core_command(*arguments)
+      [ "ri", "--no-pager", "--", *arguments ]
     end
 
     def run_shell(*command)

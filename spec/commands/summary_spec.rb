@@ -16,7 +16,9 @@ RSpec.describe GemDocs::Commands::Summary do
       signature: path,
       source_location: nil,
       superclass: nil,
-      doc_source: :yard
+      doc_source: :yard,
+      tags: {},
+      aliases: []
     )
   end
 

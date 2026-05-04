@@ -5,7 +5,7 @@ require "spec_helper"
 require "gem_docs"
 
 RSpec.describe GemDocs::Formatters::Json do
-  def build_entry(path:, signature: path, docstring: "", source_location: nil, kind: :class)
+  def build_entry(path:, signature: path, docstring: "", source_location: nil, kind: :class, tags: {}, aliases: [])
     GemDocs::DocRegistry::Entry.new(
       path: path,
       name: path.split(/[:#.]/).last,
@@ -15,7 +15,9 @@ RSpec.describe GemDocs::Formatters::Json do
       signature: signature,
       source_location: source_location,
       superclass: nil,
-      doc_source: :yard
+      doc_source: :yard,
+      tags: tags,
+      aliases: aliases
     )
   end
 
@@ -179,25 +181,37 @@ RSpec.describe GemDocs::Formatters::Json do
   end
 
   describe "#lookup" do
-    it "serializes registry entries without requiring hash access" do
+    it "serializes lookup payloads while preserving empty docstrings and aliases" do
       formatter = described_class.new
 
       output = formatter.lookup(
-        result: build_entry(
+        result: {
           path: "Rack::Builder",
-          signature: "Rack::Builder",
-          docstring: "Builds Rack applications"
-        )
+          gem: "rack",
+          version: "3.1.0",
+          doc_source: :yard,
+          signature: "def build(app = nil)",
+          visibility: :public,
+          docstring: "",
+          tags: {
+            example: [ "Rack::Builder.new" ]
+          },
+          aliases: []
+        }
       )
 
       expect(JSON.parse(output)).to eq(
         "path" => "Rack::Builder",
-        "name" => "Builder",
-        "kind" => "class",
+        "gem" => "rack",
+        "version" => "3.1.0",
+        "doc_source" => "yard",
+        "signature" => "def build(app = nil)",
         "visibility" => "public",
-        "docstring" => "Builds Rack applications",
-        "signature" => "Rack::Builder",
-        "doc_source" => "yard"
+        "docstring" => "",
+        "tags" => {
+          "example" => [ "Rack::Builder.new" ]
+        },
+        "aliases" => []
       )
     end
   end
