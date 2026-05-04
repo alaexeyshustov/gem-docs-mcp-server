@@ -291,5 +291,12 @@ RSpec.describe GemDocs::Commands::Search do
         ]
       )
     end
+
+    it "surfaces non-registry GemDocs errors" do
+      allow(registry).to receive(:load_gem).with("alpha").and_raise(GemDocs::ConfigurationError.new("bad config"))
+
+      expect { command.call(query: "Widget", format: "json") }
+        .to raise_error(GemDocs::ConfigurationError, "bad config")
+    end
   end
 end

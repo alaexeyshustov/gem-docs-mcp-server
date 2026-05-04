@@ -162,5 +162,17 @@ RSpec.describe GemDocs::Formatters::Text do
         "Rack::Request       rack  0.72  Represents a Rack request"
       )
     end
+
+    it "treats nil scores as 0.00" do
+      formatter = described_class.new
+
+      output = formatter.search(
+        results: [
+          { path: "Rack::Builder#call", gem: "rack", score: nil, summary: "Builds Rack apps" }
+        ]
+      )
+
+      expect(output).to eq("Rack::Builder#call  rack  0.00  Builds Rack apps")
+    end
   end
 end

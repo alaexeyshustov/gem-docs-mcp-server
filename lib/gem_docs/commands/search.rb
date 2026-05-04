@@ -3,6 +3,8 @@
 module GemDocs
   module Commands
     class Search < Base
+      PER_GEM_LIMIT = 5
+
       desc "Search gem documentation"
       argument :query, type: :string
       option :gem, desc: "Gem name"
@@ -51,8 +53,8 @@ module GemDocs
         loaded_gem = doc_registry.load_gem(gem_name)
         return [] if loaded_gem.doc_source == :none
 
-        ranked_results_for(loaded_gem, query, scope: scope).first(5)
-      rescue GemDocs::Error
+        ranked_results_for(loaded_gem, query, scope: scope).first(PER_GEM_LIMIT)
+      rescue GemDocs::RegistryError, GemDocs::DocUnavailable
         []
       end
 

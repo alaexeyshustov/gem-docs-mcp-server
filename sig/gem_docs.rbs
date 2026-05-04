@@ -392,6 +392,8 @@ module GemDocs::Commands
   end
 
   class Search < Base
+    PER_GEM_LIMIT: Integer
+
     def call: (query: String, ?gem: String?, ?scope: String, ?limit: (String | Integer), ?format: String, **untyped) -> Integer
 
     private

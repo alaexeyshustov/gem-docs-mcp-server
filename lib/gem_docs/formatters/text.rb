@@ -113,7 +113,7 @@ module GemDocs
           {
             path: normalized_result.fetch(:path),
             gem: normalized_result[:gem].to_s,
-            score: format("%.2f", normalized_result.fetch(:score, 0).to_f),
+            score: format("%.2f", normalized_result[:score].to_f),
             summary: normalized_result.fetch(:summary, normalized_result[:docstring].to_s).to_s
           }
         end
