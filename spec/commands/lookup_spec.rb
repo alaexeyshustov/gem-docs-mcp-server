@@ -190,6 +190,26 @@ RSpec.describe GemDocs::Commands::Lookup do
     end
   end
 
+  it "does not treat suffix-only class name matches as ambiguous" do
+    with_yard_fixture_gem(name: "alpha", source: <<~RUBY) do
+      module Alpha
+        class Record
+        end
+
+        class ActiveRecord
+        end
+      end
+    RUBY
+      status = command.call(path: "Record", gem: "alpha", format: "json")
+
+      expect(status).to eq(0)
+      expect(JSON.parse(stdout.string)).to include(
+        "path" => "Alpha::Record",
+        "gem" => "alpha"
+      )
+    end
+  end
+
   it "preserves empty source-only docstrings in JSON output" do
     with_source_fixture_gem(name: "source_only", source: <<~RUBY) do
       module SourceOnly

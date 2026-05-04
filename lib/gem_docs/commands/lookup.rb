@@ -67,9 +67,13 @@ module GemDocs
       def fuzzy_match?(candidate_path, query)
         normalized_candidate = candidate_path.downcase
         normalized_query = query.downcase
+        return true if normalized_candidate == normalized_query
 
-        normalized_candidate.end_with?(normalized_query) ||
-          normalized_candidate.end_with?("::#{normalized_query}") ||
+        suffix_index = normalized_candidate.rindex(normalized_query)
+        prefix = suffix_index ? normalized_candidate[0...suffix_index].to_s : ""
+        return true if !prefix.empty? && prefix.end_with?("::", "#", ".")
+
+        normalized_candidate.end_with?("::#{normalized_query}") ||
           normalized_candidate.end_with?("##{normalized_query}") ||
           normalized_candidate.end_with?(".#{normalized_query}") ||
           normalized_candidate.split(/::|#|\./).last == normalized_query
