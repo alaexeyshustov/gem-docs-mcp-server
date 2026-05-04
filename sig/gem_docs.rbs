@@ -336,9 +336,79 @@ module GemDocs
   end
 
   module MCP
+    class CommandTool < FastMcp::Tool
+      def self.command: (?untyped command_class) -> untyped
+      def call: (**untyped kwargs) -> Hash[Symbol, untyped]
+
+      private
+
+      def command_arguments: (**untyped kwargs) -> Hash[Symbol, untyped]
+      def execute_command: (**untyped kwargs) -> Hash[Symbol, untyped]
+    end
+
+    module Tools
+      def self.all: -> Array[untyped]
+
+      class Classes < GemDocs::MCP::CommandTool
+      end
+
+      class List < GemDocs::MCP::CommandTool
+      end
+
+      class Lookup < GemDocs::MCP::CommandTool
+      end
+
+      class Search < GemDocs::MCP::CommandTool
+      end
+
+      class Summary < GemDocs::MCP::CommandTool
+      end
+    end
+
     class Server
+      class RequestTooLargeError < StandardError
+      end
+
+      class RequestTimeoutError < StandardError
+      end
+
+      DEFAULT_MODE: String
+      DEFAULT_PORT: Integer
+      MAX_REQUEST_BODY_BYTES: Integer
+      SOCKET_READ_TIMEOUT_SECONDS: Integer
+      HTTP_STATUS_REASONS: Hash[Integer, String]
+
       def self.start: (?Array[String] arguments, ?out: untyped, ?err: untyped) -> Integer
+      def self.build_fast_mcp_server: -> FastMcp::Server
       def self.load_fast_mcp: (untyped err) -> bool
+
+      private
+
+      def self.parse_options: (Array[String] arguments, err: untyped) -> Hash[Symbol, untyped]?
+      def self.run_http: (FastMcp::Server server, host: String, port: Integer, out: untyped, err: untyped) -> Integer
+      def self.serve_http: (untyped app, host: String, port: Integer, out: untyped) -> void
+      def self.handle_http_connection: (untyped socket, untyped app, host: String, port: Integer) -> void
+      def self.read_http_headers: (untyped socket) -> Hash[String, String]
+      def self.read_http_body: (untyped socket, Hash[String, String] headers) -> String
+      def self.read_http_line: (untyped socket) -> String?
+      def self.read_http_chunk: (untyped socket, Integer bytes_to_read) -> String?
+      def self.wait_for_socket_data: { () -> untyped } -> untyped
+      def self.rack_env: (
+        method: String,
+        path: String,
+        query: String,
+        headers: Hash[String, String],
+        body: String,
+        host: String,
+        port: Integer,
+        server_protocol: String,
+        remote_addr: String
+      ) -> Hash[String, untyped]
+      def self.remote_addr_for: (untyped socket) -> String
+      def self.write_http_response: (untyped socket, Integer status, Hash[untyped, untyped] headers, untyped body) -> void
+      def self.http_status_reason: (Integer status) -> String
+      def self.not_found_response: (String path) -> [Integer, Hash[String, String], Array[String]]
+      def self.json_headers: -> Hash[String, String]
     end
   end
 end
@@ -445,6 +515,10 @@ module GemDocs::Commands
   end
 
   class Server < Base
-    def call: (?args: Array[String], **untyped) -> Integer
+    def call: (?mode: String, ?port: String, ?bind_all: bool, **untyped) -> Integer
+
+    private
+
+    def server_arguments: (mode: String, port: String, bind_all: bool) -> Array[String]
   end
 end

@@ -1,0 +1,27 @@
+module FastMcp
+  class Tool
+    attr_accessor self.server: FastMcp::Server?
+
+    def self.arguments: { () -> void } -> void
+    def self.required: (Symbol name) -> untyped
+    def self.optional: (Symbol name) -> untyped
+    def self.tool_name: (?String name) -> String?
+    def self.description: (?String description) -> String?
+    def self.input_schema: -> untyped
+    def self.input_schema_to_json: -> untyped
+
+    def initialize: (?headers: Hash[untyped, untyped]) -> void
+    def call: (**untyped kwargs) -> untyped
+  end
+
+  class Server
+    attr_accessor transport: untyped
+    attr_reader tools: Hash[String, singleton(FastMcp::Tool)]
+
+    def initialize: (name: String, version: String, ?logger: untyped, ?capabilities: Hash[untyped, untyped]) -> void
+    def register_tools: (*singleton(FastMcp::Tool) tools) -> void
+    def start: -> void
+    def start_rack: (untyped app, ?Hash[Symbol, untyped] options) -> untyped
+    def handle_json_request: (String | Hash[untyped, untyped] request, ?headers: Hash[untyped, untyped]) -> String?
+  end
+end
