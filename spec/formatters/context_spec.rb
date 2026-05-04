@@ -78,4 +78,23 @@ RSpec.describe GemDocs::Formatters::Context do
 
     expect(JSON.parse(output)).to eq({})
   end
+
+  it "keeps Claude output compact for larger projects" do
+    large_project = Array.new(20) do |index|
+      {
+        name: "gem-#{index}",
+        version: "1.0.#{index}",
+        summary: "A" * 250,
+        doc_source: :yard,
+        classes: Array.new(12) { |class_index| "Gem#{index}::Class#{class_index}" },
+        entry_points: Array.new(5) { |entry_index| "Gem#{index}::Class#{entry_index}#call" }
+      }
+    end
+
+    output = described_class.for("claude").call(gems: large_project)
+
+    expect(output).to include("- Summary:")
+    expect(output).to include("- Entry points:")
+    expect(output.bytesize).to be < 10_000
+  end
 end
