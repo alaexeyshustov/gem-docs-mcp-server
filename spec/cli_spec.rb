@@ -81,11 +81,21 @@ RSpec.describe GemDocs::CLI do
   end
 
   it "dispatches registered commands through dry-cli" do
-    status = described_class.start([ "search" ], out: stdout, err: stderr)
+    stub_const("GemDocs::Commands::Search", Class.new(GemDocs::Commands::Base) do
+      desc "Search gem documentation"
+      argument :query, type: :string
+
+      def call(query:, **)
+        out.puts "searched #{query}"
+        0
+      end
+    end)
+
+    status = described_class.start([ "search", "rack" ], out: stdout, err: stderr)
 
     expect(status).to eq(0)
     expect(stderr.string).to eq("")
-    expect(stdout.string).to eq("search is not implemented yet.\n")
+    expect(stdout.string).to eq("searched rack\n")
   end
 
   it "renders structured JSON for handled command errors" do

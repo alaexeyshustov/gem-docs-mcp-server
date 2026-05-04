@@ -65,7 +65,19 @@ module GemDocs
       end
 
       def search(results:)
-        call(results.map { |result| compact_value(normalize_entry(result)) })
+        payload = results.map do |result|
+          normalized_result = normalize_entry(result)
+          compacted_result = compact_value(
+            path: normalized_result.fetch(:path),
+            gem: normalized_result[:gem],
+            type: normalized_result[:type] || normalized_result[:kind]&.to_s,
+            score: normalized_result[:score]
+          ) || {}
+          compacted_result[:summary] = normalized_result.fetch(:summary, normalized_result[:docstring].to_s).to_s
+          compacted_result
+        end
+
+        call(payload)
       end
     end
   end

@@ -217,33 +217,31 @@ RSpec.describe GemDocs::Formatters::Json do
   end
 
   describe "#search" do
-    it "serializes registry entries without requiring hash access" do
+    it "serializes ranked search results with their documented fields" do
       formatter = described_class.new
 
       output = formatter.search(
         results: [
-          build_entry(path: "Rack::Builder"),
-          build_entry(path: "Rack::Request")
+          { path: "Rack::Builder#call", gem: "rack", type: "method", summary: "Builds Rack apps", score: 0.95 },
+          { path: "Rack::Request", gem: "rack", type: "class", summary: "", score: 0.72 }
         ]
       )
 
       expect(JSON.parse(output)).to eq(
         [
           {
-            "path" => "Rack::Builder",
-            "name" => "Builder",
-            "kind" => "class",
-            "visibility" => "public",
-            "signature" => "Rack::Builder",
-            "doc_source" => "yard"
+            "path" => "Rack::Builder#call",
+            "gem" => "rack",
+            "type" => "method",
+            "summary" => "Builds Rack apps",
+            "score" => 0.95
           },
           {
             "path" => "Rack::Request",
-            "name" => "Request",
-            "kind" => "class",
-            "visibility" => "public",
-            "signature" => "Rack::Request",
-            "doc_source" => "yard"
+            "gem" => "rack",
+            "type" => "class",
+            "summary" => "",
+            "score" => 0.72
           }
         ]
       )
