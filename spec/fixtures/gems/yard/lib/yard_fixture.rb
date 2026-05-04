@@ -9,6 +9,7 @@ module YardFixture
     # @example
     #   YardFixture::Widget.new.call("demo")
     def call(input)
+      input
     end
   end
 end

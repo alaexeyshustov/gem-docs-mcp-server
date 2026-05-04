@@ -3,6 +3,7 @@
 module SourceOnly
   class Widget
     def call(input)
+      input
     end
   end
 end
