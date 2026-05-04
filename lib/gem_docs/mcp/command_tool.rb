@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "json"
 require "stringio"
 
 module GemDocs
@@ -42,6 +43,9 @@ module GemDocs
           command.call(**kwargs, format: "json")
         rescue GemDocs::Error => e
           command.render_command_error(e, format: "json")
+        rescue StandardError => e
+          stderr.puts(JSON.generate(error: "internal_error", message: e.message))
+          1
         end
 
         {

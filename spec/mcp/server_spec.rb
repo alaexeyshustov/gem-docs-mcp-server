@@ -89,6 +89,40 @@ RSpec.describe GemDocs::MCP::Server do
       )
     end
 
+    it "converts unexpected command exceptions into an MCP error result" do
+      stub_const("GemDocs::Commands::Lookup", Class.new(GemDocs::Commands::Base) do
+        def call(**)
+          raise ArgumentError, "boom"
+        end
+      end)
+      GemDocs::MCP::Tools::Lookup.command(GemDocs::Commands::Lookup) if defined?(GemDocs::MCP::Tools::Lookup)
+
+      server = described_class.build_fast_mcp_server
+      transport = CapturingTransport.new
+      server.transport = transport
+
+      server.handle_json_request(
+        {
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: {
+            name: "lookup",
+            arguments: {
+              path: "Widget"
+            }
+          }
+        }
+      )
+      response = transport.messages.last
+
+      expect(response.dig(:result, :isError)).to be(true)
+      expect(JSON.parse(response.dig(:result, :content, 0, :text))).to eq(
+        "error" => "internal_error",
+        "message" => "boom"
+      )
+    end
+
     it "publishes MCP input schemas for the supported tool arguments" do
       server = described_class.build_fast_mcp_server
       transport = CapturingTransport.new

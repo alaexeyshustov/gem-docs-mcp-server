@@ -5,7 +5,6 @@ require "optparse"
 require "socket"
 require "stringio"
 require "timeout"
-require "timeout"
 
 module GemDocs
   module MCP
