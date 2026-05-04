@@ -148,7 +148,7 @@ module GemDocs
           host: host,
           port: port,
           server_protocol: server_protocol || "HTTP/1.1",
-          remote_addr: socket.peeraddr(false)[3]
+          remote_addr: remote_addr_for(socket)
         )
 
         status, response_headers, response_body = app.call(env)
@@ -251,6 +251,13 @@ module GemDocs
         env
       end
       private_class_method :rack_env
+
+      def self.remote_addr_for(socket)
+        socket.peeraddr(false)[3]
+      rescue IOError, SystemCallError
+        "unknown"
+      end
+      private_class_method :remote_addr_for
 
       def self.write_http_response(socket, status, headers, body)
         response_body = +""

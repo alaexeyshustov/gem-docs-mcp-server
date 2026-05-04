@@ -404,6 +404,7 @@ module GemDocs
         server_protocol: String,
         remote_addr: String
       ) -> Hash[String, untyped]
+      def self.remote_addr_for: (untyped socket) -> String
       def self.write_http_response: (untyped socket, Integer status, Hash[untyped, untyped] headers, untyped body) -> void
       def self.http_status_reason: (Integer status) -> String
       def self.not_found_response: -> [Integer, Hash[String, String], Array[String]]
