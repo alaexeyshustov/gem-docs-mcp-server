@@ -17,19 +17,20 @@ RSpec.describe "executables" do
     expect("#{stdout}\n#{stderr}").to include("gem-docs")
   end
 
-  it "loads the server executable and reports the optional fast-mcp dependency cleanly" do
+  it "loads the server executable without emitting placeholder output" do
     stdout, stderr, status = run_command("ruby", "-Ilib", "exe/gem-docs-server")
 
     expect(status).to be_success
-    expect("#{stdout}\n#{stderr}").to include("gem-docs-server")
+    expect(stdout).to eq("")
+    expect(stderr).to eq("")
   end
 
-  it "routes the CLI server command through the MCP server loader" do
+  it "routes the CLI server command through the MCP server loader without extra output" do
     stdout, stderr, status = run_command("ruby", "-Ilib", "exe/gem-docs", "server")
 
     expect(status).to be_success
     expect(stderr).to eq("")
-    expect(stdout).to include("gem-docs-server placeholder loaded")
+    expect(stdout).to eq("")
   end
 
   it "reports fast-mcp load failures from the CLI server command without a stack trace" do

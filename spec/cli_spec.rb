@@ -98,6 +98,23 @@ RSpec.describe GemDocs::CLI do
     expect(stdout.string).to eq("searched rack\n")
   end
 
+  it "passes server mode options through to the MCP server entrypoint" do
+    allow(GemDocs::MCP::Server).to receive(:start).and_return(0)
+
+    status = described_class.start(
+      [ "server", "--mode", "http", "--port", "7001", "--bind-all" ],
+      out: stdout,
+      err: stderr
+    )
+
+    expect(status).to eq(0)
+    expect(GemDocs::MCP::Server).to have_received(:start).with(
+      [ "--mode", "http", "--port", "7001", "--bind-all" ],
+      out: stdout,
+      err: stderr
+    )
+  end
+
   it "renders structured JSON for handled command errors" do
     stub_const("GemDocs::Commands::List", Class.new(GemDocs::Commands::Base) do
       desc "Show installed gems"

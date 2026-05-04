@@ -17,7 +17,7 @@ module Dry
     def self.desc: (String description) -> void
     def self.example: (Array[String] examples) -> void
     def self.argument: (Symbol name, type: Symbol) -> void
-    def self.option: (Symbol name, ?values: Array[String]?, ?default: String?, desc: String) -> void
+    def self.option: (Symbol name, ?values: Array[String]?, ?default: untyped, ?type: Symbol?, desc: String) -> void
     def self.description: -> String?
     def self.examples: -> Array[String]
 

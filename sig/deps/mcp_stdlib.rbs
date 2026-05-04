@@ -1,0 +1,14 @@
+class OptionParser
+  def self.new: { (OptionParser parser) -> void } -> OptionParser
+  def initialize: { (OptionParser parser) -> void } -> void
+  def on: (*untyped args) { (*untyped) -> void } -> void
+  def parse!: (Array[String] arguments) -> Array[String]
+
+  class ParseError < StandardError
+  end
+end
+
+class TCPServer
+  def self.open: (String host, Integer port) { (TCPServer server) -> untyped } -> untyped
+  def accept: -> untyped
+end
