@@ -16,7 +16,9 @@ RSpec.describe GemDocs::Commands::Classes do
       signature: path,
       source_location: nil,
       superclass: superclass,
-      doc_source: :yard
+      doc_source: :yard,
+      tags: {},
+      aliases: []
     )
   end
 

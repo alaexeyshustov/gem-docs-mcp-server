@@ -4,7 +4,7 @@ require "spec_helper"
 require "gem_docs"
 
 RSpec.describe GemDocs::Formatters::Text do
-  def build_entry(path:, signature: path, docstring: "", source_location: nil, kind: :class)
+  def build_entry(path:, signature: path, docstring: "", source_location: nil, kind: :class, tags: {}, aliases: [])
     GemDocs::DocRegistry::Entry.new(
       path: path,
       name: path.split(/[:#.]/).last,
@@ -14,7 +14,9 @@ RSpec.describe GemDocs::Formatters::Text do
       signature: signature,
       source_location: source_location,
       superclass: nil,
-      doc_source: :yard
+      doc_source: :yard,
+      tags: tags,
+      aliases: aliases
     )
   end
 
@@ -110,18 +112,37 @@ RSpec.describe GemDocs::Formatters::Text do
   end
 
   describe "#lookup" do
-    it "omits the source line when the entry has no source location" do
+    it "renders lookup metadata, tags, and aliases" do
       formatter = described_class.new
 
       output = formatter.lookup(
-        result: build_entry(
+        result: {
           path: "Rack::Builder",
-          signature: "Rack::Builder",
-          docstring: "Builds Rack applications"
-        )
+          gem: "rack",
+          version: "3.1.0",
+          doc_source: :yard,
+          signature: "def build(app = nil)",
+          docstring: "Builds Rack applications",
+          tags: {
+            param: [
+              { name: "app", types: [ "Rack::App" ], text: "Rack app" }
+            ],
+            example: [ "Rack::Builder.new" ]
+          },
+          aliases: [ "Rack::Builder.compile" ]
+        }
       )
 
-      expect(output).to eq("Rack::Builder\nRack::Builder\nBuilds Rack applications")
+      expect(output).to eq(
+        "Rack::Builder  [rack 3.1.0 · yard]\n" \
+        "def build(app = nil)\n" \
+        "Builds Rack applications\n" \
+        "Params:\n" \
+        "  app  Rack::App  Rack app\n" \
+        "Example:\n" \
+        "  Rack::Builder.new\n" \
+        "Aliases: Rack::Builder.compile"
+      )
     end
   end
 

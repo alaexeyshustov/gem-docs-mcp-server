@@ -54,7 +54,14 @@ module GemDocs
       end
 
       def lookup(result:)
-        call(compact_value(normalize_entry(result)))
+        normalized_result = normalize_entry(result)
+        payload = compact_value(normalized_result) || {}
+        payload[:docstring] = normalized_result.fetch(:docstring, "").to_s
+        tags = normalized_result[:tags]
+        payload[:tags] = tags.nil? ? Hash.new : (compact_value(tags) || Hash.new)
+        aliases = normalized_result[:aliases]
+        payload[:aliases] = aliases.is_a?(Array) ? aliases.map { |value| value.to_s } : Array.new
+        call(payload)
       end
 
       def search(results:)
