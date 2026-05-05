@@ -108,6 +108,40 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "persists per-entry source artifacts for offline compression" do
+      with_source_fixture_gem("compression_source_fixture", source: <<~RUBY) do
+        module CompressionSourceFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache = GemDocs::ArtifactCache.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+          registry = described_class.new(cache: cache)
+
+          registry.load_gem("compression_source_fixture")
+
+          artifacts = registry.source_artifacts_for("compression_source_fixture")
+
+          expect(artifacts.map { |artifact| artifact.fetch(:lookup_target) }).to include(
+            "CompressionSourceFixture",
+            "CompressionSourceFixture::Widget",
+            "CompressionSourceFixture::Widget#call"
+          )
+          expect(artifacts.find { |artifact| artifact.fetch(:lookup_target) == "CompressionSourceFixture::Widget#call" })
+            .to include(
+              payload: include(
+                "path" => "CompressionSourceFixture::Widget#call",
+                "signature" => "CompressionSourceFixture::Widget#call(input)",
+                "doc_source" => "source_only"
+              )
+            )
+        end
+      end
+    end
+
     it "invalidates persisted documentation artifacts when gem contents change" do
       with_source_fixture_gem("mutable_fixture", source: <<~RUBY) do |spec|
         module MutableFixture

@@ -171,6 +171,9 @@ module GemDocs
     def initialize: (?shell_runner: ^(Array[String]) -> command_response, ?cache: ArtifactCache?) -> void
     def load_gem: (String name, ?version: String?) -> LoadedGem
     def doc_source_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> doc_source
+    def artifact_invalidation_key_for: (String name, ?version: String?) -> String?
+    def source_artifacts_for: (String name, ?version: String?) -> Array[Hash[Symbol, untyped]]
+    def lookup_artifact_for: (String path, gem_name: String, ?version: String?) -> { kind: Symbol, payload: untyped }?
     def find_object: (String path, gem_name: String) -> Entry?
     def classes_for: (String gem_name) -> Array[Entry]
     def find_core_object: (String path) -> Entry?
@@ -185,8 +188,11 @@ module GemDocs
     def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> LoadedGem?
     def hydrate_cached_loaded_gem: (Gem::Specification spec, LoadedGem loaded_gem) -> LoadedGem
     def persist_loaded_gem: (LoadedGem loaded_gem, invalidation_key: String?) -> bool?
+    def persist_source_artifacts: (LoadedGem loaded_gem, invalidation_key: String) -> Array[Entry]
+    def source_artifact_payload: (LoadedGem loaded_gem, Entry entry) -> Hash[String, untyped]
     def artifact_invalidation_key: (Gem::Specification spec) -> String
     def artifact_files_for: (Gem::Specification spec) -> Array[String]
+    def resolve_spec: (String name, ?version: String?) -> Gem::Specification?
     def load_yard_objects: (String yardoc) -> Array[Entry]
     def gem_description: (Gem::Specification spec) -> String?
     def gem_license: (Gem::Specification spec) -> String?
@@ -217,6 +223,7 @@ module GemDocs
     def yard_tags: (untyped object) -> Hash[Symbol, untyped]
     def normalize_yard_tag: (untyped tag) -> (Hash[Symbol, untyped] | String)?
     def yard_aliases: (untyped object) -> Array[String]
+    def stringify_hash: (untyped value) -> untyped
     def parse_rdoc_output: (String output) -> [String, String]
     def rdoc_kind_for: (String path, String signature) -> entry_kind
     def ri_list_command: (Gem::Specification spec) -> Array[String]
@@ -256,6 +263,11 @@ module GemDocs
       lookup_target: String,
       invalidation_key: String
     ) -> { kind: Symbol, payload: untyped }?
+    def source_artifacts: (
+      gem_name: String,
+      gem_version: String,
+      invalidation_key: String
+    ) -> Array[Hash[Symbol, untyped]]
     def write_artifact: (
       gem_name: String,
       gem_version: String,
@@ -277,6 +289,29 @@ module GemDocs
     def build_entry: (Hash[String, untyped] payload) -> DocRegistry::Entry
     def symbolize_hash: (untyped value) -> untyped
     def default_artifact_version: (Symbol artifact_kind) -> Integer
+    def compressed_usable?: (untyped payload) -> bool
+    def artifact_payload_digest: (untyped payload) -> String
+  end
+
+  module Compression
+    class Pipeline
+      PROMPT_VERSION: Integer
+      NON_OBVIOUS_KNOWLEDGE_DEFINITION: String
+      OUTPUT_SCHEMA: Hash[String, untyped]
+
+      def initialize: (
+        cache: ArtifactCache,
+        compressor: ^(gem: Hash[Symbol, String], source_artifact: Hash[Symbol, untyped], prompt: String, schema: Hash[String, untyped]) -> Hash[untyped, untyped],
+        ?doc_registry: DocRegistry
+      ) -> void
+      def compress_gem: (String gem_name, ?version: String?) -> Hash[Symbol, untyped]
+
+      private
+
+      def prompt_for: (DocRegistry::LoadedGem loaded_gem, Hash[Symbol, untyped] source_artifact) -> String
+      def normalize_payload: (Hash[untyped, untyped]? payload, source_artifact: Hash[Symbol, untyped]) -> Hash[String, untyped]
+      def stringify_insight: (untyped insight) -> Hash[String, untyped]
+    end
   end
 
   module Commands
@@ -346,6 +381,9 @@ module GemDocs
       def build_type_lines: (String title, untyped values) -> String?
       def build_example_lines: (untyped values) -> Array[String]?
       def aliases_section: (untyped aliases) -> String?
+      def knowledge_source_line: (untyped knowledge_source) -> String?
+      def insights_section: (untyped insights) -> String?
+      def format_insight: (untyped insight) -> String
     end
 
     module Context

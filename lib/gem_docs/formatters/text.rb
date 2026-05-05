@@ -99,9 +99,11 @@ module GemDocs
         build_sections(
           metadata.empty? ? normalized_result.fetch(:path) : "#{normalized_result.fetch(:path)}  [#{metadata}]",
           normalized_result[:source_location],
+          knowledge_source_line(normalized_result[:knowledge_source]),
           nil,
           normalized_result[:signature],
           normalized_result[:docstring],
+          insights_section(normalized_result[:non_obvious_insights]),
           tag_sections(normalized_result[:tags]),
           aliases_section(normalized_result[:aliases])
         )
@@ -220,6 +222,35 @@ module GemDocs
         return if aliases.empty?
 
         "Aliases: #{aliases.join(', ')}"
+      end
+
+      def knowledge_source_line(knowledge_source)
+        return if knowledge_source.nil? || knowledge_source.to_s.empty?
+
+        "Knowledge source: #{knowledge_source}"
+      end
+
+      def insights_section(insights)
+        insights = Array(insights)
+        return if insights.empty?
+
+        [
+          "Non-obvious insights:",
+          *insights.map { |insight| format_insight(insight) }
+        ].join("\n")
+      end
+
+      def format_insight(insight)
+        case insight
+        when Hash
+          title = insight[:title] || insight["title"]
+          detail = insight[:detail] || insight["detail"]
+          return "  #{detail}" if title.nil? || title.to_s.empty?
+
+          [ "  - #{title}", detail ].compact.join(": ")
+        else
+          "  #{insight}"
+        end
       end
 
       def method_count_label(method_count)

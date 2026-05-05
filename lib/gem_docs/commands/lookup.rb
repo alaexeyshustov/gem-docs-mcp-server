@@ -92,8 +92,13 @@ module GemDocs
 
       def lookup_payload(result)
         entry = result.fetch(:entry)
+        cached_artifact = doc_registry.lookup_artifact_for(
+          entry.path,
+          gem_name: result.fetch(:gem_name),
+          version: result.fetch(:version)
+        )
 
-        {
+        payload = {
           path: entry.path,
           name: entry.name,
           kind: entry.kind,
@@ -107,6 +112,15 @@ module GemDocs
           source_location: entry.source_location,
           aliases: entry.aliases
         }
+
+        return payload unless cached_artifact
+
+        payload[:knowledge_source] = cached_artifact.fetch(:kind)
+        if cached_artifact.fetch(:kind) == :compressed
+          payload[:non_obvious_insights] = cached_artifact.fetch(:payload).fetch("insights", Array.new)
+        end
+
+        payload
       end
     end
   end

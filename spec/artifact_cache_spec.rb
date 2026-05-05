@@ -122,6 +122,106 @@ RSpec.describe GemDocs::ArtifactCache do
     end
   end
 
+  it "falls back to source artifacts when compressed knowledge is marked insufficient" do
+    Dir.mktmpdir do |tmpdir|
+      cache = described_class.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+
+      cache.write_artifact(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: "Demo::Widget#call",
+        artifact_kind: :source,
+        payload: { "docstring" => "Full source docs" },
+        invalidation_key: "digest-v1"
+      )
+      cache.write_artifact(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: "Demo::Widget#call",
+        artifact_kind: :compressed,
+        payload: {
+          "status" => "insufficient",
+          "reason" => "The raw documentation is already obvious."
+        },
+        invalidation_key: "digest-v1"
+      )
+
+      expect(cache.fetch_with_fallback(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: "Demo::Widget#call",
+        invalidation_key: "digest-v1"
+      )).to eq(
+        {
+          kind: :source,
+          payload: { "docstring" => "Full source docs" }
+        }
+      )
+    end
+  end
+
+  it "lists source artifacts for offline compression by gem version and invalidation key" do
+    Dir.mktmpdir do |tmpdir|
+      cache = described_class.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+
+      cache.write_artifact(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: "Demo::Widget",
+        artifact_kind: :source,
+        payload: { "path" => "Demo::Widget", "docstring" => "Widget docs" },
+        invalidation_key: "digest-v1"
+      )
+      cache.write_artifact(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: "Demo::Widget#call",
+        artifact_kind: :source,
+        payload: { "path" => "Demo::Widget#call", "docstring" => "Stale docs" },
+        invalidation_key: "digest-v0"
+      )
+      cache.write_artifact(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: "Demo::Widget#call",
+        artifact_kind: :source,
+        payload: { "path" => "Demo::Widget#call", "docstring" => "Call docs" },
+        invalidation_key: "digest-v1"
+      )
+      cache.write_artifact(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        lookup_target: described_class::GEM_LOOKUP_TARGET,
+        artifact_kind: :source,
+        payload: { "name" => "demo" },
+        invalidation_key: "digest-v1"
+      )
+
+      expect(cache.source_artifacts(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        invalidation_key: "digest-v1"
+      )).to eq(
+        [
+          {
+            lookup_target: "Demo::Widget",
+            artifact_version: described_class::ARTIFACT_VERSIONS.fetch(:source),
+            invalidation_key: "digest-v1",
+            payload: { "path" => "Demo::Widget", "docstring" => "Widget docs" },
+            payload_digest: Digest::SHA256.hexdigest(JSON.generate({ "path" => "Demo::Widget", "docstring" => "Widget docs" }))
+          },
+          {
+            lookup_target: "Demo::Widget#call",
+            artifact_version: described_class::ARTIFACT_VERSIONS.fetch(:source),
+            invalidation_key: "digest-v1",
+            payload: { "path" => "Demo::Widget#call", "docstring" => "Call docs" },
+            payload_digest: Digest::SHA256.hexdigest(JSON.generate({ "path" => "Demo::Widget#call", "docstring" => "Call docs" }))
+          }
+        ]
+      )
+    end
+  end
+
   it "separates persisted artifacts by gem version" do
     Dir.mktmpdir do |tmpdir|
       cache = described_class.new(path: File.join(tmpdir, "artifacts.sqlite3"))
