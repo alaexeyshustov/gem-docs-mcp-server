@@ -9,6 +9,7 @@ target :lib do
   ignore "lib/gem_docs/formatters/context.rb"
 
   library "json"
+  library "digest"
   library "open3"
   library "pathname"
   library "yaml"

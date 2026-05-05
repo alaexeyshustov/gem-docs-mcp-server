@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "digest"
 require "json"
 require "sqlite3"
 
@@ -81,7 +82,7 @@ module GemDocs
         artifact_kind: :compressed,
         invalidation_key: invalidation_key
       )
-      return { kind: :compressed, payload: compressed } if compressed
+      return { kind: :compressed, payload: compressed } if compressed_usable?(compressed)
 
       source = fetch_artifact(
         gem_name: gem_name,
@@ -93,6 +94,36 @@ module GemDocs
       return { kind: :source, payload: source } if source
 
       nil
+    end
+
+    def source_artifacts(gem_name:, gem_version:, invalidation_key:)
+      with_database do |database|
+        database.execute(
+          <<~SQL,
+            SELECT lookup_target, artifact_version, invalidation_key, payload
+            FROM documentation_artifacts
+            WHERE gem_name = ?
+              AND gem_version = ?
+              AND artifact_kind = 'source'
+              AND invalidation_key = ?
+              AND lookup_target != ?
+            ORDER BY lookup_target ASC
+          SQL
+          gem_name,
+          gem_version,
+          invalidation_key,
+          GEM_LOOKUP_TARGET
+        ).map do |lookup_target, artifact_version, row_invalidation_key, payload|
+          parsed_payload = JSON.parse(payload)
+          {
+            lookup_target: lookup_target,
+            artifact_version: artifact_version,
+            invalidation_key: row_invalidation_key,
+            payload: parsed_payload,
+            payload_digest: artifact_payload_digest(parsed_payload)
+          }
+        end
+      end
     end
 
     def write_artifact(gem_name:, gem_version:, lookup_target:, artifact_kind:, payload:, invalidation_key:, artifact_version: nil)
@@ -268,6 +299,17 @@ module GemDocs
 
     def default_artifact_version(artifact_kind)
       ARTIFACT_VERSIONS.fetch(artifact_kind.to_sym)
+    end
+
+    def compressed_usable?(payload)
+      return false unless payload
+      return false if payload.is_a?(Hash) && payload["status"] == "insufficient"
+
+      true
+    end
+
+    def artifact_payload_digest(payload)
+      Digest::SHA256.hexdigest(JSON.generate(payload))
     end
   end
 end

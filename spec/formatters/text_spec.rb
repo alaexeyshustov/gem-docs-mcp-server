@@ -144,6 +144,32 @@ RSpec.describe GemDocs::Formatters::Text do
         "Aliases: Rack::Builder.compile"
       )
     end
+
+    it "renders compressed insight details even when a title is missing" do
+      formatter = described_class.new
+
+      output = formatter.lookup(
+        result: {
+          path: "Rack::Builder",
+          gem: "rack",
+          version: "3.1.0",
+          doc_source: :yard,
+          signature: "def build(app = nil)",
+          docstring: "Builds Rack applications",
+          knowledge_source: :compressed,
+          non_obvious_insights: [
+            { "detail" => "Builder freezes middleware order after map is evaluated." }
+          ],
+          tags: {},
+          aliases: []
+        }
+      )
+
+      expect(output).to include("Knowledge source: compressed")
+      expect(output).to include("Non-obvious insights:")
+      expect(output).to include("  Builder freezes middleware order after map is evaluated.")
+      expect(output).not_to include("  - :")
+    end
   end
 
   describe "#search" do

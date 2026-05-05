@@ -147,6 +147,7 @@ module GemDocs
       if cached_gem
         @doc_sources[cache_key] = cached_gem.doc_source
         @loaded_gems[cache_key] = cached_gem
+        ensure_source_artifacts_persisted(cached_gem, invalidation_key: invalidation_key)
         return cached_gem
       end
 
@@ -172,6 +173,36 @@ module GemDocs
       @doc_sources.fetch(cache_key) do
         @doc_sources[cache_key] = detect_doc_source(spec)
       end
+    end
+
+    def artifact_invalidation_key_for(name, version: nil)
+      spec = resolve_spec(name, version: version)
+      raise GemDocs::GemNotFound.new(name) unless spec
+
+      safe_artifact_invalidation_key(spec)
+    end
+
+    def source_artifacts_for(name, version: nil)
+      loaded_gem = load_gem(name, version: version)
+      invalidation_key = artifact_invalidation_key_for(name, version: loaded_gem.version)
+      return [] unless @cache && invalidation_key
+
+      ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key)
+    end
+
+    def lookup_artifact_for(path, gem_name:, version: nil)
+      loaded_gem = load_gem(gem_name, version: version)
+      invalidation_key = artifact_invalidation_key_for(gem_name, version: loaded_gem.version)
+      return unless @cache && invalidation_key
+
+      @cache.fetch_with_fallback(
+        gem_name: loaded_gem.name,
+        gem_version: loaded_gem.version,
+        lookup_target: path,
+        invalidation_key: invalidation_key
+      )
+    rescue StandardError
+      nil
     end
 
     def find_object(path, gem_name:)
@@ -262,8 +293,61 @@ module GemDocs
       return unless @cache && invalidation_key
 
       @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
+      persist_source_artifacts(loaded_gem, invalidation_key: invalidation_key)
     rescue StandardError
       nil
+    end
+
+    def persist_source_artifacts(loaded_gem, invalidation_key:)
+      loaded_gem.objects.dup.each do |entry|
+        resolved_entry = loaded_gem.find(entry.path) || entry
+        @cache.write_artifact(
+          gem_name: loaded_gem.name,
+          gem_version: loaded_gem.version,
+          lookup_target: resolved_entry.path,
+          artifact_kind: :source,
+          payload: source_artifact_payload(loaded_gem, resolved_entry),
+          invalidation_key: invalidation_key
+        )
+      end
+    end
+
+    def ensure_source_artifacts_persisted(loaded_gem, invalidation_key:)
+      return [] unless @cache && invalidation_key
+
+      artifacts = @cache.source_artifacts(
+        gem_name: loaded_gem.name,
+        gem_version: loaded_gem.version,
+        invalidation_key: invalidation_key
+      )
+      return artifacts unless artifacts.empty? && !loaded_gem.objects.empty?
+
+      persist_source_artifacts(loaded_gem, invalidation_key: invalidation_key)
+      @cache.source_artifacts(
+        gem_name: loaded_gem.name,
+        gem_version: loaded_gem.version,
+        invalidation_key: invalidation_key
+      )
+    rescue StandardError
+      []
+    end
+
+    def source_artifact_payload(loaded_gem, entry)
+      {
+        "gem_name" => loaded_gem.name,
+        "gem_version" => loaded_gem.version,
+        "doc_source" => entry.doc_source.to_s,
+        "path" => entry.path,
+        "name" => entry.name,
+        "kind" => entry.kind.to_s,
+        "visibility" => entry.visibility.to_s,
+        "docstring" => entry.docstring,
+        "signature" => entry.signature,
+        "source_location" => entry.source_location,
+        "superclass" => entry.superclass,
+        "tags" => stringify_hash(entry.tags),
+        "aliases" => entry.aliases
+      }
     end
 
     def hydrate_cached_loaded_gem(spec, loaded_gem)
@@ -296,6 +380,13 @@ module GemDocs
       return nil if version.nil? || version.empty?
 
       version
+    end
+
+    def resolve_spec(name, version: nil)
+      normalized_version = normalize_version(version)
+      return self.class.gem_spec_for(name) if normalized_version.nil?
+
+      self.class.gem_spec_for(name, version: normalized_version)
     end
 
     def build_loaded_gem(spec)
@@ -765,6 +856,19 @@ module GemDocs
 
       Array(object.aliases).filter_map do |alias_object|
         alias_object.respond_to?(:path) ? alias_object.path : alias_object.to_s
+      end
+    end
+
+    def stringify_hash(value)
+      case value
+      when Hash
+        value.each_with_object({}) do |(key, nested_value), hash|
+          hash[key.to_s] = stringify_hash(nested_value)
+        end
+      when Array
+        value.map { |item| stringify_hash(item) }
+      else
+        value
       end
     end
 
