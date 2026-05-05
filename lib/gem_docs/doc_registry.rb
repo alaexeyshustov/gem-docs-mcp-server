@@ -125,7 +125,7 @@ module GemDocs
       @loaded_gems = {}
       @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
-      @cache = cache.nil? ? GemDocs::ArtifactCache.default(root: Dir.pwd) : cache
+      @cache = cache == false ? nil : (cache || GemDocs::ArtifactCache.default(root: Dir.pwd))
     end
 
     def load_gem(name, version: nil)

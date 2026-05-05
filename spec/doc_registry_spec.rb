@@ -71,6 +71,16 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "allows persistent caching to be disabled explicitly" do
+      with_source_fixture_gem("cache_toggle_fixture", source: "module CacheToggleFixture; end\n") do
+        expect(GemDocs::ArtifactCache).not_to receive(:default)
+
+        registry = described_class.new(cache: false)
+
+        expect(registry.load_gem("cache_toggle_fixture").doc_source).to eq(:source_only)
+      end
+    end
+
     it "reuses persisted documentation artifacts across registry instances" do
       with_source_fixture_gem("persistent_fixture", source: <<~RUBY) do
         module PersistentFixture
