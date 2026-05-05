@@ -46,7 +46,7 @@ RSpec.describe "bootstrap structure" do
     expect(spec.required_ruby_version).to eq(Gem::Requirement.new(">= 3.2"))
     expect(spec.executables).to contain_exactly("gem-docs", "gem-docs-server")
     expect(spec.version.to_s).to eq(GemDocs::VERSION)
-    expect(spec.runtime_dependencies.map(&:name)).to contain_exactly("dry-cli", "prism", "yard", "zeitwerk")
+    expect(spec.runtime_dependencies.map(&:name)).to contain_exactly("dry-cli", "prism", "sqlite3", "yard", "zeitwerk")
 
     expect(gemfile).to include('group :mcp do')
     expect(gemfile).to include('gem "fast-mcp", require: false')

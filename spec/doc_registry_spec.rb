@@ -71,6 +71,138 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "allows persistent caching to be disabled explicitly" do
+      with_source_fixture_gem("cache_toggle_fixture", source: "module CacheToggleFixture; end\n") do
+        expect(GemDocs::ArtifactCache).not_to receive(:default)
+
+        registry = described_class.new(cache: false)
+
+        expect(registry.load_gem("cache_toggle_fixture").doc_source).to eq(:source_only)
+      end
+    end
+
+    it "reuses persisted documentation artifacts across registry instances" do
+      with_source_fixture_gem("persistent_fixture", source: <<~RUBY) do
+        module PersistentFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          first_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+
+          first_registry.load_gem("persistent_fixture")
+
+          second_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+          expect(second_registry).not_to receive(:build_loaded_gem)
+
+          loaded_gem = second_registry.load_gem("persistent_fixture")
+
+          expect(loaded_gem.doc_source).to eq(:source_only)
+          expect(second_registry.find_object("PersistentFixture::Widget#call", gem_name: "persistent_fixture")&.signature)
+            .to eq("PersistentFixture::Widget#call(input)")
+        end
+      end
+    end
+
+    it "invalidates persisted documentation artifacts when gem contents change" do
+      with_source_fixture_gem("mutable_fixture", source: <<~RUBY) do |spec|
+        module MutableFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          first_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+
+          expect(first_registry.find_object("MutableFixture::Widget#call", gem_name: "mutable_fixture")&.signature)
+            .to eq("MutableFixture::Widget#call(input)")
+
+          File.write(File.join(spec.full_gem_path, "lib", "mutable_fixture.rb"), <<~RUBY)
+            module MutableFixture
+              class Widget
+                def call(input, retries: 0)
+                end
+              end
+            end
+          RUBY
+
+          second_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+
+          expect(second_registry.find_object("MutableFixture::Widget#call", gem_name: "mutable_fixture")&.signature)
+            .to eq("MutableFixture::Widget#call(input, retries: ?)")
+        end
+      end
+    end
+
+    it "rebuilds from source when a persisted cache entry is corrupted" do
+      with_source_fixture_gem("corrupt_cache_fixture", source: <<~RUBY) do |spec|
+        module CorruptCacheFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          cache = GemDocs::ArtifactCache.new(path: cache_path)
+          registry = described_class.new(cache: cache)
+          invalidation_key = registry.send(:artifact_invalidation_key, spec)
+
+          cache.write_artifact(
+            gem_name: "corrupt_cache_fixture",
+            gem_version: "0.1.0",
+            lookup_target: GemDocs::ArtifactCache::GEM_LOOKUP_TARGET,
+            artifact_kind: :source,
+            payload: { "name" => "bad" },
+            invalidation_key: invalidation_key
+          )
+
+          SQLite3::Database.new(cache_path).tap do |database|
+            database.execute(
+              "UPDATE documentation_artifacts SET payload = ? WHERE gem_name = ?",
+              "{",
+              "corrupt_cache_fixture"
+            )
+          ensure
+            database.close
+          end
+
+          rebuilt_registry = described_class.new(cache: cache)
+
+          expect(rebuilt_registry.find_object("CorruptCacheFixture::Widget#call", gem_name: "corrupt_cache_fixture")&.signature)
+            .to eq("CorruptCacheFixture::Widget#call(input)")
+        end
+      end
+    end
+
+    it "treats invalidation key read failures as cache misses" do
+      with_source_fixture_gem("invalidation_failure_fixture", source: <<~RUBY) do |spec|
+        module InvalidationFailureFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        source_path = File.join(spec.full_gem_path, "lib", "invalidation_failure_fixture.rb")
+        allow(File).to receive(:stat).and_call_original
+        allow(File).to receive(:stat).with(source_path).and_raise(Errno::ENOENT, source_path)
+
+        registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: File.join(spec.full_gem_path, "cache.sqlite3")))
+
+        expect(registry.find_object("InvalidationFailureFixture::Widget#call", gem_name: "invalidation_failure_fixture")&.signature)
+          .to eq("InvalidationFailureFixture::Widget#call(input)")
+      end
+    end
+
     it "falls back to ri data when a gem has no .yardoc cache" do
       stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
         commands = []
@@ -99,6 +231,49 @@ RSpec.describe GemDocs::DocRegistry do
         expect(commands.count { |command| command.last == "RdocOnly::Widget" }).to eq(0)
         expect(object&.doc_source).to eq(:rdoc)
         expect(object&.docstring).to include("Calls through ri.")
+      end
+    end
+
+    it "rebuilds cached rdoc gems with lazy ri lookups across registry instances" do
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          commands = []
+
+          shell_runner = lambda do |command|
+            commands << command
+
+            case command.last
+            when "-l"
+              { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+            when "RdocOnly::Widget"
+              { stdout: "class RdocOnly::Widget\n\nThe primary RDoc class.\n", stderr: "", success: true }
+            when "RdocOnly::Widget#call"
+              { stdout: "RdocOnly::Widget#call\n\nCalls through ri.\n", stderr: "", success: true }
+            else
+              { stdout: "", stderr: "Not found", success: false }
+            end
+          end
+
+          first_registry = described_class.new(
+            shell_runner: shell_runner,
+            cache: GemDocs::ArtifactCache.new(path: cache_path)
+          )
+          first_registry.load_gem("rdoc_only")
+
+          commands.clear
+
+          second_registry = described_class.new(
+            shell_runner: shell_runner,
+            cache: GemDocs::ArtifactCache.new(path: cache_path)
+          )
+          object = second_registry.find_object("RdocOnly::Widget#call", gem_name: "rdoc_only")
+
+          expect(object&.doc_source).to eq(:rdoc)
+          expect(object&.docstring).to include("Calls through ri.")
+          expect(commands.map(&:last)).to include("RdocOnly::Widget#call")
+          expect(commands.map(&:last)).not_to include("-l")
+        end
       end
     end
 

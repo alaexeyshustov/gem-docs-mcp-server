@@ -2,6 +2,12 @@
 
 CLI-first gem documentation lookup for local Ruby projects, with an optional MCP server wrapper.
 
+## Persistent cache
+
+`gem-docs` stores normalized documentation artifacts in a local SQLite database at `.gem-docs/cache.sqlite3`.
+The cache keeps source-derived artifacts and future compressed artifacts in separate rows keyed by gem name, gem version, and lookup target.
+Entries are invalidated automatically when the gem contents change or when the cache schema/artifact version changes.
+
 ## CLI
 
 ```bash

@@ -1,0 +1,19 @@
+module SQLite3
+  class Exception < StandardError
+  end
+
+  class BusyException < Exception
+  end
+
+  class LockedException < Exception
+  end
+
+  class Database
+    def initialize: (String path) -> void
+    def busy_timeout=: (Integer timeout) -> Integer
+    def execute_batch: (String sql) -> untyped
+    def execute: (String sql, *untyped bind_vars) -> Array[Array[untyped]]
+    def get_first_row: (String sql, *untyped bind_vars) -> Array[untyped]?
+    def close: -> void
+  end
+end

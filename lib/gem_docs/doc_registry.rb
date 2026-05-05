@@ -3,6 +3,7 @@
 require "open3"
 require "prism"
 require "yard"
+require "digest"
 
 module GemDocs
   class DocRegistry
@@ -120,10 +121,11 @@ module GemDocs
       end
     end
 
-    def initialize(shell_runner: nil)
+    def initialize(shell_runner: nil, cache: nil)
       @loaded_gems = {}
       @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
+      @cache = cache == false ? nil : (cache || GemDocs::ArtifactCache.default(root: Dir.pwd))
     end
 
     def load_gem(name, version: nil)
@@ -140,8 +142,17 @@ module GemDocs
       end
       raise GemDocs::GemNotFound.new(name) unless spec
 
+      invalidation_key = safe_artifact_invalidation_key(spec)
+      cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
+      if cached_gem
+        @doc_sources[cache_key] = cached_gem.doc_source
+        @loaded_gems[cache_key] = cached_gem
+        return cached_gem
+      end
+
       loaded_gem = build_loaded_gem(spec)
       @doc_sources[cache_key] = loaded_gem.doc_source
+      persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
     end
 
@@ -200,6 +211,78 @@ module GemDocs
       return :source_only if source_objects_available?(spec)
 
       :none
+    end
+
+    def artifact_invalidation_key(spec)
+      digest = Digest::SHA256.new
+      digest << "schema:#{GemDocs::ArtifactCache::SCHEMA_VERSION}\n"
+      digest << "gem:#{spec.name}\n"
+      digest << "version:#{spec.version}\n"
+      digest << "path:#{spec.full_gem_path}\n"
+
+      artifact_files_for(spec).sort.each do |file|
+        stat = File.stat(file)
+        digest << "file:#{file.delete_prefix("#{spec.full_gem_path}/")}\n"
+        digest << "size:#{stat.size}\n"
+        digest << "mtime:#{stat.mtime.to_r}\n"
+      end
+
+      digest.hexdigest
+    end
+
+    def artifact_files_for(spec)
+      files = ruby_files_for(spec)
+      yardoc = yardoc_path_for(spec)
+      files << yardoc if File.file?(yardoc)
+      files.uniq
+    end
+
+    def safe_artifact_invalidation_key(spec)
+      artifact_invalidation_key(spec)
+    rescue StandardError
+      nil
+    end
+
+    def fetch_cached_loaded_gem(spec, invalidation_key:)
+      return unless @cache && invalidation_key
+
+      cached_gem = @cache.fetch_loaded_gem(
+        gem_name: spec.name,
+        gem_version: spec.version.to_s,
+        invalidation_key: invalidation_key
+      )
+      return unless cached_gem
+
+      hydrate_cached_loaded_gem(spec, cached_gem)
+    rescue StandardError
+      nil
+    end
+
+    def persist_loaded_gem(loaded_gem, invalidation_key:)
+      return unless @cache && invalidation_key
+
+      @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
+    rescue StandardError
+      nil
+    end
+
+    def hydrate_cached_loaded_gem(spec, loaded_gem)
+      return loaded_gem unless loaded_gem.doc_source == :rdoc
+
+      LoadedGem.new(
+        name: loaded_gem.name,
+        version: loaded_gem.version,
+        summary: loaded_gem.summary,
+        description: loaded_gem.description,
+        homepage: loaded_gem.homepage,
+        license: loaded_gem.license,
+        path: loaded_gem.path,
+        doc_source: loaded_gem.doc_source,
+        objects: loaded_gem.objects,
+        entry_points: loaded_gem.entry_points,
+        dynamic_lookup: ->(path) { load_rdoc_object(spec, path) },
+        lazy_paths: loaded_gem.objects.map(&:path)
+      )
     end
 
     def cache_key_for(name, version)
