@@ -71,6 +71,66 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "reuses persisted documentation artifacts across registry instances" do
+      with_source_fixture_gem("persistent_fixture", source: <<~RUBY) do
+        module PersistentFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          first_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+
+          first_registry.load_gem("persistent_fixture")
+
+          second_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+          expect(second_registry).not_to receive(:build_loaded_gem)
+
+          loaded_gem = second_registry.load_gem("persistent_fixture")
+
+          expect(loaded_gem.doc_source).to eq(:source_only)
+          expect(second_registry.find_object("PersistentFixture::Widget#call", gem_name: "persistent_fixture")&.signature)
+            .to eq("PersistentFixture::Widget#call(input)")
+        end
+      end
+    end
+
+    it "invalidates persisted documentation artifacts when gem contents change" do
+      with_source_fixture_gem("mutable_fixture", source: <<~RUBY) do |spec|
+        module MutableFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          first_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+
+          expect(first_registry.find_object("MutableFixture::Widget#call", gem_name: "mutable_fixture")&.signature)
+            .to eq("MutableFixture::Widget#call(input)")
+
+          File.write(File.join(spec.full_gem_path, "lib", "mutable_fixture.rb"), <<~RUBY)
+            module MutableFixture
+              class Widget
+                def call(input, retries: 0)
+                end
+              end
+            end
+          RUBY
+
+          second_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+
+          expect(second_registry.find_object("MutableFixture::Widget#call", gem_name: "mutable_fixture")&.signature)
+            .to eq("MutableFixture::Widget#call(input, retries: ?)")
+        end
+      end
+    end
+
     it "falls back to ri data when a gem has no .yardoc cache" do
       stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
         commands = []

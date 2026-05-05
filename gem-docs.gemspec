@@ -30,6 +30,7 @@ Gem::Specification.new do |spec|
 
   spec.add_dependency "dry-cli", "~> 1.0"
   spec.add_dependency "prism", "~> 1.4"
+  spec.add_dependency "sqlite3", "~> 1.7"
   spec.add_dependency "yard", "~> 0.9"
   spec.add_dependency "zeitwerk", "~> 2.6"
 end

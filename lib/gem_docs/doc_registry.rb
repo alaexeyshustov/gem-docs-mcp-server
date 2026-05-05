@@ -3,6 +3,7 @@
 require "open3"
 require "prism"
 require "yard"
+require "digest"
 
 module GemDocs
   class DocRegistry
@@ -120,10 +121,11 @@ module GemDocs
       end
     end
 
-    def initialize(shell_runner: nil)
+    def initialize(shell_runner: nil, cache: nil)
       @loaded_gems = {}
       @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
+      @cache = cache.nil? ? GemDocs::ArtifactCache.default(root: Dir.pwd) : cache
     end
 
     def load_gem(name, version: nil)
@@ -140,8 +142,21 @@ module GemDocs
       end
       raise GemDocs::GemNotFound.new(name) unless spec
 
+      invalidation_key = artifact_invalidation_key(spec)
+      cached_gem = @cache&.fetch_loaded_gem(
+        gem_name: spec.name,
+        gem_version: spec.version.to_s,
+        invalidation_key: invalidation_key
+      )
+      if cached_gem
+        @doc_sources[cache_key] = cached_gem.doc_source
+        @loaded_gems[cache_key] = cached_gem
+        return cached_gem
+      end
+
       loaded_gem = build_loaded_gem(spec)
       @doc_sources[cache_key] = loaded_gem.doc_source
+      @cache&.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
     end
 
@@ -200,6 +215,35 @@ module GemDocs
       return :source_only if source_objects_available?(spec)
 
       :none
+    end
+
+    def artifact_invalidation_key(spec)
+      digest = Digest::SHA256.new
+      digest << "schema:#{GemDocs::ArtifactCache::SCHEMA_VERSION}\n"
+      digest << "gem:#{spec.name}\n"
+      digest << "version:#{spec.version}\n"
+      digest << "path:#{spec.full_gem_path}\n"
+
+      artifact_files_for(spec).sort.each do |file|
+        digest << "file:#{file.delete_prefix("#{spec.full_gem_path}/")}\n"
+        digest << File.binread(file)
+      end
+
+      digest.hexdigest
+    end
+
+    def artifact_files_for(spec)
+      files = ruby_files_for(spec)
+      yardoc = yardoc_path_for(spec)
+      files << yardoc if File.file?(yardoc)
+
+      if File.directory?(spec.doc_dir)
+        files.concat(
+          Dir.glob(File.join(spec.doc_dir, "**", "*")).select { |path| File.file?(path) }
+        )
+      end
+
+      files.uniq
     end
 
     def cache_key_for(name, version)

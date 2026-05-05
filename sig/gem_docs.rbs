@@ -168,7 +168,7 @@ module GemDocs
 
     def self.gem_spec_for: (String name, ?version: String?) -> Gem::Specification?
 
-    def initialize: (?shell_runner: ^(Array[String]) -> command_response) -> void
+    def initialize: (?shell_runner: ^(Array[String]) -> command_response, ?cache: ArtifactCache?) -> void
     def load_gem: (String name, ?version: String?) -> LoadedGem
     def doc_source_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def find_object: (String path, gem_name: String) -> Entry?
@@ -221,6 +221,53 @@ module GemDocs
     def command_execution_failed?: (command_response response) -> bool
     def push_children: (Array[[Prism::Node, String?, bool]] stack, Prism::Node node, String? namespace_path, ?bool class_method_context) -> Array[[Prism::Node, String?, bool]]?
     def find_in_ancestor_chain: (LoadedGem loaded_gem, String path) -> Entry?
+  end
+
+  class ArtifactCache
+    SCHEMA_VERSION: Integer
+    GEM_LOOKUP_TARGET: String
+    ARTIFACT_VERSIONS: Hash[Symbol, Integer]
+
+    def self.default: (?root: String) -> ArtifactCache
+
+    def initialize: (path: String) -> void
+    def fetch_loaded_gem: (gem_name: String, gem_version: String, invalidation_key: String) -> DocRegistry::LoadedGem?
+    def write_loaded_gem: (DocRegistry::LoadedGem loaded_gem, invalidation_key: String) -> true
+    def fetch_artifact: (
+      gem_name: String,
+      gem_version: String,
+      lookup_target: String,
+      artifact_kind: Symbol,
+      invalidation_key: String,
+      ?artifact_version: Integer?
+    ) -> untyped
+    def fetch_with_fallback: (
+      gem_name: String,
+      gem_version: String,
+      lookup_target: String,
+      invalidation_key: String
+    ) -> { kind: Symbol, payload: untyped }?
+    def write_artifact: (
+      gem_name: String,
+      gem_version: String,
+      lookup_target: String,
+      artifact_kind: Symbol,
+      payload: untyped,
+      invalidation_key: String,
+      ?artifact_version: Integer?
+    ) -> true
+
+    private
+
+    attr_reader path: String
+    def with_database: { (SQLite3::Database database) -> untyped } -> untyped
+    def ensure_schema!: (SQLite3::Database database) -> void
+    def serialize_loaded_gem: (DocRegistry::LoadedGem loaded_gem) -> Hash[String, untyped]
+    def serialize_entry: (DocRegistry::Entry entry) -> Hash[String, untyped]
+    def build_loaded_gem: (Hash[String, untyped] payload) -> DocRegistry::LoadedGem
+    def build_entry: (Hash[String, untyped] payload) -> DocRegistry::Entry
+    def symbolize_hash: (untyped value) -> untyped
+    def default_artifact_version: (Symbol artifact_kind) -> Integer
   end
 
   module Commands
