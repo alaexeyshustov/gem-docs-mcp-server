@@ -142,6 +142,44 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "backfills missing per-entry source artifacts from cached gem snapshots" do
+      with_source_fixture_gem("compression_source_fixture", source: <<~RUBY) do
+        module CompressionSourceFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          cache = GemDocs::ArtifactCache.new(path: cache_path)
+          initial_registry = described_class.new(cache: cache)
+
+          initial_registry.load_gem("compression_source_fixture")
+
+          SQLite3::Database.new(cache_path).tap do |database|
+            database.execute(
+              "DELETE FROM documentation_artifacts WHERE gem_name = ? AND lookup_target != ?",
+              "compression_source_fixture",
+              GemDocs::ArtifactCache::GEM_LOOKUP_TARGET
+            )
+          ensure
+            database.close
+          end
+
+          rebuilt_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+          artifacts = rebuilt_registry.source_artifacts_for("compression_source_fixture")
+
+          expect(artifacts.map { |artifact| artifact.fetch(:lookup_target) }).to include(
+            "CompressionSourceFixture",
+            "CompressionSourceFixture::Widget",
+            "CompressionSourceFixture::Widget#call"
+          )
+        end
+      end
+    end
+
     it "invalidates persisted documentation artifacts when gem contents change" do
       with_source_fixture_gem("mutable_fixture", source: <<~RUBY) do |spec|
         module MutableFixture
@@ -246,7 +284,7 @@ RSpec.describe GemDocs::DocRegistry do
 
           case command.last
           when "-l"
-            { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+            { stdout: "RdocOnly::Widget\nRdocOnly::Widget#call\n", stderr: "", success: true }
           when "RdocOnly::Widget"
             { stdout: "class RdocOnly::Widget\n\nThe primary RDoc class.\n", stderr: "", success: true }
           when "RdocOnly::Widget#call"
@@ -262,7 +300,8 @@ RSpec.describe GemDocs::DocRegistry do
         object = registry.find_object("RdocOnly::Widget#call", gem_name: "rdoc_only")
 
         expect(loaded_gem.doc_source).to eq(:rdoc)
-        expect(commands.count { |command| command.last == "RdocOnly::Widget" }).to eq(0)
+        expect(commands.count { |command| command.last == "RdocOnly::Widget" }).to eq(1)
+        expect(commands.count { |command| command.last == "RdocOnly::Widget#call" }).to eq(1)
         expect(object&.doc_source).to eq(:rdoc)
         expect(object&.docstring).to include("Calls through ri.")
       end
@@ -279,7 +318,7 @@ RSpec.describe GemDocs::DocRegistry do
 
             case command.last
             when "-l"
-              { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+              { stdout: "RdocOnly::Widget\nRdocOnly::Widget#call\n", stderr: "", success: true }
             when "RdocOnly::Widget"
               { stdout: "class RdocOnly::Widget\n\nThe primary RDoc class.\n", stderr: "", success: true }
             when "RdocOnly::Widget#call"
@@ -307,6 +346,40 @@ RSpec.describe GemDocs::DocRegistry do
           expect(object&.docstring).to include("Calls through ri.")
           expect(commands.map(&:last)).to include("RdocOnly::Widget#call")
           expect(commands.map(&:last)).not_to include("-l")
+        end
+      end
+    end
+
+    it "persists hydrated ri object payloads for offline compression" do
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do
+        Dir.mktmpdir do |tmpdir|
+          cache = GemDocs::ArtifactCache.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+
+          shell_runner = lambda do |command|
+            case command.last
+            when "-l"
+              { stdout: "RdocOnly::Widget\nRdocOnly::Widget#call\n", stderr: "", success: true }
+            when "RdocOnly::Widget"
+              { stdout: "class RdocOnly::Widget\n\nThe primary RDoc class.\n", stderr: "", success: true }
+            when "RdocOnly::Widget#call"
+              { stdout: "RdocOnly::Widget#call\n\nCalls through ri.\n", stderr: "", success: true }
+            else
+              { stdout: "", stderr: "Not found", success: false }
+            end
+          end
+
+          registry = described_class.new(shell_runner: shell_runner, cache: cache)
+
+          registry.load_gem("rdoc_only")
+          artifacts = registry.source_artifacts_for("rdoc_only")
+
+          expect(artifacts.find { |artifact| artifact.fetch(:lookup_target) == "RdocOnly::Widget#call" }).to include(
+            payload: include(
+              "doc_source" => "rdoc",
+              "signature" => "RdocOnly::Widget#call",
+              "docstring" => "Calls through ri."
+            )
+          )
         end
       end
     end

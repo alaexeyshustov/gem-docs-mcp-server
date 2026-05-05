@@ -74,4 +74,76 @@ RSpec.describe GemDocs::Compression::Pipeline do
       end
     end
   end
+
+  it "stores insufficient payloads when the compressor returns nothing" do
+    with_yard_fixture_gem(name: "compression_fixture", source: <<~RUBY) do
+      module CompressionFixture
+        class Client
+          # Retries idempotent requests with exponential backoff.
+          def call
+          end
+        end
+      end
+    RUBY
+      Dir.mktmpdir do |tmpdir|
+        cache = GemDocs::ArtifactCache.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+        registry = GemDocs::DocRegistry.new(cache: cache)
+
+        registry.load_gem("compression_fixture")
+
+        pipeline = described_class.new(
+          cache: cache,
+          doc_registry: registry,
+          compressor: lambda do |**_kwargs|
+            nil
+          end
+        )
+
+        pipeline.compress_gem("compression_fixture")
+        payload = cache.fetch_artifact(
+          gem_name: "compression_fixture",
+          gem_version: "0.1.0",
+          lookup_target: "CompressionFixture::Client#call",
+          artifact_kind: :compressed,
+          invalidation_key: registry.artifact_invalidation_key_for("compression_fixture")
+        )
+
+        expect(payload).to include(
+          "status" => "insufficient",
+          "reason" => "Compressor returned no structured payload",
+          "insights" => []
+        )
+      end
+    end
+  end
+
+  it "rejects malformed compressor payloads that do not match the documented schema" do
+    with_yard_fixture_gem(name: "compression_fixture", source: <<~RUBY) do
+      module CompressionFixture
+        class Client
+          # Retries idempotent requests with exponential backoff.
+          def call
+          end
+        end
+      end
+    RUBY
+      Dir.mktmpdir do |tmpdir|
+        cache = GemDocs::ArtifactCache.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+        registry = GemDocs::DocRegistry.new(cache: cache)
+
+        registry.load_gem("compression_fixture")
+
+        pipeline = described_class.new(
+          cache: cache,
+          doc_registry: registry,
+          compressor: lambda do |**_kwargs|
+            { "status" => "ready", "insights" => [ { "detail" => "Missing title" } ] }
+          end
+        )
+
+        expect { pipeline.compress_gem("compression_fixture") }
+          .to raise_error(ArgumentError, /title/)
+      end
+    end
+  end
 end

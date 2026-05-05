@@ -189,6 +189,7 @@ module GemDocs
     def hydrate_cached_loaded_gem: (Gem::Specification spec, LoadedGem loaded_gem) -> LoadedGem
     def persist_loaded_gem: (LoadedGem loaded_gem, invalidation_key: String?) -> bool?
     def persist_source_artifacts: (LoadedGem loaded_gem, invalidation_key: String) -> Array[Entry]
+    def ensure_source_artifacts_persisted: (LoadedGem loaded_gem, invalidation_key: String) -> Array[Hash[Symbol, untyped]]
     def source_artifact_payload: (LoadedGem loaded_gem, Entry entry) -> Hash[String, untyped]
     def artifact_invalidation_key: (Gem::Specification spec) -> String
     def artifact_files_for: (Gem::Specification spec) -> Array[String]
@@ -301,7 +302,7 @@ module GemDocs
 
       def initialize: (
         cache: ArtifactCache,
-        compressor: ^(gem: Hash[Symbol, String], source_artifact: Hash[Symbol, untyped], prompt: String, schema: Hash[String, untyped]) -> Hash[untyped, untyped],
+        compressor: ^(gem: Hash[Symbol, String], source_artifact: Hash[Symbol, untyped], prompt: String, schema: Hash[String, untyped]) -> Hash[untyped, untyped]?,
         ?doc_registry: DocRegistry
       ) -> void
       def compress_gem: (String gem_name, ?version: String?) -> Hash[Symbol, untyped]
@@ -310,6 +311,10 @@ module GemDocs
 
       def prompt_for: (DocRegistry::LoadedGem loaded_gem, Hash[Symbol, untyped] source_artifact) -> String
       def normalize_payload: (Hash[untyped, untyped]? payload, source_artifact: Hash[Symbol, untyped]) -> Hash[String, untyped]
+      def normalize_compressor_payload: (Hash[untyped, untyped]? payload) -> Hash[String, untyped]
+      def insufficient_payload: (String reason) -> Hash[String, untyped]
+      def validate_payload!: (Hash[String, untyped] payload) -> void
+      def validate_insight!: (Hash[String, untyped] insight) -> void
       def stringify_insight: (untyped insight) -> Hash[String, untyped]
     end
   end

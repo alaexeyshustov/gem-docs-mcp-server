@@ -260,6 +260,55 @@ RSpec.describe GemDocs::Commands::Lookup do
     end
   end
 
+  it "falls back to source knowledge when compressed knowledge is marked insufficient" do
+    with_yard_fixture_gem(name: "lookup_fixture", source: <<~RUBY) do
+      module LookupFixture
+        class Client
+          # Performs the request.
+          def call(input)
+          end
+        end
+      end
+    RUBY
+      Dir.mktmpdir do |tmpdir|
+        cache = GemDocs::ArtifactCache.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+        registry = GemDocs::DocRegistry.new(cache: cache)
+        invalidation_key = registry.artifact_invalidation_key_for("lookup_fixture")
+
+        registry.load_gem("lookup_fixture")
+        cache.write_artifact(
+          gem_name: "lookup_fixture",
+          gem_version: "0.1.0",
+          lookup_target: "LookupFixture::Client#call",
+          artifact_kind: :compressed,
+          payload: {
+            "status" => "insufficient",
+            "reason" => "Only obvious API surface information was found.",
+            "insights" => []
+          },
+          invalidation_key: invalidation_key
+        )
+
+        allow(command).to receive(:doc_registry).and_return(registry)
+
+        status = command.call(
+          path: "LookupFixture::Client#call",
+          gem: "lookup_fixture",
+          format: "json"
+        )
+
+        expect(status).to eq(0)
+        payload = JSON.parse(stdout.string)
+
+        expect(payload).to include(
+          "path" => "LookupFixture::Client#call",
+          "knowledge_source" => "source"
+        )
+        expect(payload).not_to have_key("non_obvious_insights")
+      end
+    end
+  end
+
   it "falls back to Ruby core ri lookups when no gem match exists" do
     registry = GemDocs::DocRegistry.new(
       shell_runner: lambda do |lookup_command|

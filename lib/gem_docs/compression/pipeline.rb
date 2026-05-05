@@ -99,9 +99,7 @@ module GemDocs
       end
 
       def normalize_payload(payload, source_artifact:)
-        normalized = (payload || {}).transform_keys(&:to_s)
-        normalized["status"] ||= "ready"
-        normalized["insights"] = Array(normalized["insights"]).map { |insight| stringify_insight(insight) }
+        normalized = normalize_compressor_payload(payload)
         normalized["prompt_version"] = PROMPT_VERSION
         normalized["source_artifact"] = {
           "lookup_target" => source_artifact.fetch(:lookup_target),
@@ -111,6 +109,62 @@ module GemDocs
           "payload_digest" => source_artifact.fetch(:payload_digest)
         }
         normalized
+      end
+
+      def normalize_compressor_payload(payload)
+        raise ArgumentError, "Compressor output must be a Hash or nil" unless payload.nil? || payload.is_a?(Hash)
+
+        normalized = payload&.transform_keys(&:to_s) || {}
+        return insufficient_payload("Compressor returned no structured payload") if normalized.empty?
+
+        normalized["status"] = normalized.fetch("status").to_s
+        normalized["reason"] = normalized["reason"].to_s if normalized.key?("reason") && !normalized["reason"].nil?
+        normalized["insights"] = Array(normalized.fetch("insights")).map { |insight| stringify_insight(insight) }
+        validate_payload!(normalized)
+        normalized
+      end
+
+      def insufficient_payload(reason)
+        {
+          "status" => "insufficient",
+          "reason" => reason,
+          "insights" => []
+        }
+      end
+
+      def validate_payload!(payload)
+        unless OUTPUT_SCHEMA.fetch("properties").fetch("status").fetch("enum").include?(payload["status"])
+          raise ArgumentError, "Compressor output has invalid status: #{payload['status'].inspect}"
+        end
+
+        raise ArgumentError, "Compressor output must include an insights array" unless payload["insights"].is_a?(Array)
+
+        if payload.key?("reason") && !payload["reason"].is_a?(String)
+          raise ArgumentError, "Compressor output reason must be a string"
+        end
+
+        payload["insights"].each do |insight|
+          validate_insight!(insight)
+        end
+      end
+
+      def validate_insight!(insight)
+        raise ArgumentError, "Each insight must be an object" unless insight.is_a?(Hash)
+
+        title = insight["title"]
+        detail = insight["detail"]
+        raise ArgumentError, "Each insight must include a string title" unless title.is_a?(String)
+        raise ArgumentError, "Each insight must include a string detail" unless detail.is_a?(String)
+
+        categories = insight["categories"]
+        if !categories.nil? && (!categories.is_a?(Array) || categories.any? { |value| !value.is_a?(String) })
+          raise ArgumentError, "Insight categories must be an array of strings"
+        end
+
+        version_scope = insight["version_scope"]
+        return if version_scope.nil? || version_scope.is_a?(String)
+
+        raise ArgumentError, "Insight version_scope must be a string"
       end
 
       def stringify_insight(insight)

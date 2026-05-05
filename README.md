@@ -28,7 +28,7 @@ If a source artifact contains only obvious API surface information, the compress
 
 ### Prompt and schema
 
-The pipeline ships a documented prompt definition in `GemDocs::Compression::Pipeline::NON_OBVIOUS_KNOWLEDGE_DEFINITION` and validates compressor output against the `OUTPUT_SCHEMA` shape:
+The pipeline ships a documented prompt definition in `GemDocs::Compression::Pipeline::NON_OBVIOUS_KNOWLEDGE_DEFINITION` and validates the compressor response against the `OUTPUT_SCHEMA` shape before adding cache metadata:
 
 ```json
 {

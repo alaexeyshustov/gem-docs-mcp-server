@@ -147,6 +147,7 @@ module GemDocs
       if cached_gem
         @doc_sources[cache_key] = cached_gem.doc_source
         @loaded_gems[cache_key] = cached_gem
+        ensure_source_artifacts_persisted(cached_gem, invalidation_key: invalidation_key)
         return cached_gem
       end
 
@@ -186,11 +187,7 @@ module GemDocs
       invalidation_key = artifact_invalidation_key_for(name, version: loaded_gem.version)
       return [] unless @cache && invalidation_key
 
-      @cache.source_artifacts(
-        gem_name: loaded_gem.name,
-        gem_version: loaded_gem.version,
-        invalidation_key: invalidation_key
-      )
+      ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key)
     end
 
     def lookup_artifact_for(path, gem_name:, version: nil)
@@ -302,16 +299,37 @@ module GemDocs
     end
 
     def persist_source_artifacts(loaded_gem, invalidation_key:)
-      loaded_gem.objects.each do |entry|
+      loaded_gem.objects.dup.each do |entry|
+        resolved_entry = loaded_gem.find(entry.path) || entry
         @cache.write_artifact(
           gem_name: loaded_gem.name,
           gem_version: loaded_gem.version,
-          lookup_target: entry.path,
+          lookup_target: resolved_entry.path,
           artifact_kind: :source,
-          payload: source_artifact_payload(loaded_gem, entry),
+          payload: source_artifact_payload(loaded_gem, resolved_entry),
           invalidation_key: invalidation_key
         )
       end
+    end
+
+    def ensure_source_artifacts_persisted(loaded_gem, invalidation_key:)
+      return [] unless @cache && invalidation_key
+
+      artifacts = @cache.source_artifacts(
+        gem_name: loaded_gem.name,
+        gem_version: loaded_gem.version,
+        invalidation_key: invalidation_key
+      )
+      return artifacts unless artifacts.empty? && !loaded_gem.objects.empty?
+
+      persist_source_artifacts(loaded_gem, invalidation_key: invalidation_key)
+      @cache.source_artifacts(
+        gem_name: loaded_gem.name,
+        gem_version: loaded_gem.version,
+        invalidation_key: invalidation_key
+      )
+    rescue StandardError
+      []
     end
 
     def source_artifact_payload(loaded_gem, entry)
