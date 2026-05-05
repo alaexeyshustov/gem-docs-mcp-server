@@ -141,6 +141,68 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "rebuilds from source when a persisted cache entry is corrupted" do
+      with_source_fixture_gem("corrupt_cache_fixture", source: <<~RUBY) do |spec|
+        module CorruptCacheFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          cache = GemDocs::ArtifactCache.new(path: cache_path)
+          registry = described_class.new(cache: cache)
+          invalidation_key = registry.send(:artifact_invalidation_key, spec)
+
+          cache.write_artifact(
+            gem_name: "corrupt_cache_fixture",
+            gem_version: "0.1.0",
+            lookup_target: GemDocs::ArtifactCache::GEM_LOOKUP_TARGET,
+            artifact_kind: :source,
+            payload: { "name" => "bad" },
+            invalidation_key: invalidation_key
+          )
+
+          SQLite3::Database.new(cache_path).tap do |database|
+            database.execute(
+              "UPDATE documentation_artifacts SET payload = ? WHERE gem_name = ?",
+              "{",
+              "corrupt_cache_fixture"
+            )
+          ensure
+            database.close
+          end
+
+          rebuilt_registry = described_class.new(cache: cache)
+
+          expect(rebuilt_registry.find_object("CorruptCacheFixture::Widget#call", gem_name: "corrupt_cache_fixture")&.signature)
+            .to eq("CorruptCacheFixture::Widget#call(input)")
+        end
+      end
+    end
+
+    it "treats invalidation key read failures as cache misses" do
+      with_source_fixture_gem("invalidation_failure_fixture", source: <<~RUBY) do |spec|
+        module InvalidationFailureFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        source_path = File.join(spec.full_gem_path, "lib", "invalidation_failure_fixture.rb")
+        allow(File).to receive(:binread).and_call_original
+        allow(File).to receive(:binread).with(source_path).and_raise(Errno::ENOENT, source_path)
+
+        registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: File.join(spec.full_gem_path, "cache.sqlite3")))
+
+        expect(registry.find_object("InvalidationFailureFixture::Widget#call", gem_name: "invalidation_failure_fixture")&.signature)
+          .to eq("InvalidationFailureFixture::Widget#call(input)")
+      end
+    end
+
     it "falls back to ri data when a gem has no .yardoc cache" do
       stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
         commands = []

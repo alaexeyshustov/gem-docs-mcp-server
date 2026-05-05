@@ -181,6 +181,11 @@ module GemDocs
     def cache_key_for: (String name, String? version) -> (String | [String, String])
     def normalize_version: (String? version) -> String?
     def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
+    def safe_artifact_invalidation_key: (Gem::Specification spec) -> String?
+    def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> LoadedGem?
+    def persist_loaded_gem: (LoadedGem loaded_gem, invalidation_key: String?) -> void?
+    def artifact_invalidation_key: (Gem::Specification spec) -> String
+    def artifact_files_for: (Gem::Specification spec) -> Array[String]
     def load_yard_objects: (String yardoc) -> Array[Entry]
     def gem_description: (Gem::Specification spec) -> String?
     def gem_license: (Gem::Specification spec) -> String?

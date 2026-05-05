@@ -142,12 +142,8 @@ module GemDocs
       end
       raise GemDocs::GemNotFound.new(name) unless spec
 
-      invalidation_key = artifact_invalidation_key(spec)
-      cached_gem = @cache&.fetch_loaded_gem(
-        gem_name: spec.name,
-        gem_version: spec.version.to_s,
-        invalidation_key: invalidation_key
-      )
+      invalidation_key = safe_artifact_invalidation_key(spec)
+      cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
       if cached_gem
         @doc_sources[cache_key] = cached_gem.doc_source
         @loaded_gems[cache_key] = cached_gem
@@ -156,7 +152,7 @@ module GemDocs
 
       loaded_gem = build_loaded_gem(spec)
       @doc_sources[cache_key] = loaded_gem.doc_source
-      @cache&.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
+      persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
     end
 
@@ -244,6 +240,32 @@ module GemDocs
       end
 
       files.uniq
+    end
+
+    def safe_artifact_invalidation_key(spec)
+      artifact_invalidation_key(spec)
+    rescue StandardError
+      nil
+    end
+
+    def fetch_cached_loaded_gem(spec, invalidation_key:)
+      return unless @cache && invalidation_key
+
+      @cache.fetch_loaded_gem(
+        gem_name: spec.name,
+        gem_version: spec.version.to_s,
+        invalidation_key: invalidation_key
+      )
+    rescue StandardError
+      nil
+    end
+
+    def persist_loaded_gem(loaded_gem, invalidation_key:)
+      return unless @cache && invalidation_key
+
+      @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
+    rescue StandardError
+      nil
     end
 
     def cache_key_for(name, version)
