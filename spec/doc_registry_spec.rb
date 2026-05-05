@@ -193,8 +193,8 @@ RSpec.describe GemDocs::DocRegistry do
         end
       RUBY
         source_path = File.join(spec.full_gem_path, "lib", "invalidation_failure_fixture.rb")
-        allow(File).to receive(:binread).and_call_original
-        allow(File).to receive(:binread).with(source_path).and_raise(Errno::ENOENT, source_path)
+        allow(File).to receive(:stat).and_call_original
+        allow(File).to receive(:stat).with(source_path).and_raise(Errno::ENOENT, source_path)
 
         registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: File.join(spec.full_gem_path, "cache.sqlite3")))
 
@@ -231,6 +231,49 @@ RSpec.describe GemDocs::DocRegistry do
         expect(commands.count { |command| command.last == "RdocOnly::Widget" }).to eq(0)
         expect(object&.doc_source).to eq(:rdoc)
         expect(object&.docstring).to include("Calls through ri.")
+      end
+    end
+
+    it "rebuilds cached rdoc gems with lazy ri lookups across registry instances" do
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          commands = []
+
+          shell_runner = lambda do |command|
+            commands << command
+
+            case command.last
+            when "-l"
+              { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+            when "RdocOnly::Widget"
+              { stdout: "class RdocOnly::Widget\n\nThe primary RDoc class.\n", stderr: "", success: true }
+            when "RdocOnly::Widget#call"
+              { stdout: "RdocOnly::Widget#call\n\nCalls through ri.\n", stderr: "", success: true }
+            else
+              { stdout: "", stderr: "Not found", success: false }
+            end
+          end
+
+          first_registry = described_class.new(
+            shell_runner: shell_runner,
+            cache: GemDocs::ArtifactCache.new(path: cache_path)
+          )
+          first_registry.load_gem("rdoc_only")
+
+          commands.clear
+
+          second_registry = described_class.new(
+            shell_runner: shell_runner,
+            cache: GemDocs::ArtifactCache.new(path: cache_path)
+          )
+          object = second_registry.find_object("RdocOnly::Widget#call", gem_name: "rdoc_only")
+
+          expect(object&.doc_source).to eq(:rdoc)
+          expect(object&.docstring).to include("Calls through ri.")
+          expect(commands.map(&:last)).to include("RdocOnly::Widget#call")
+          expect(commands.map(&:last)).not_to include("-l")
+        end
       end
     end
 

@@ -183,6 +183,7 @@ module GemDocs
     def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
     def safe_artifact_invalidation_key: (Gem::Specification spec) -> String?
     def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> LoadedGem?
+    def hydrate_cached_loaded_gem: (Gem::Specification spec, LoadedGem loaded_gem) -> LoadedGem
     def persist_loaded_gem: (LoadedGem loaded_gem, invalidation_key: String?) -> bool?
     def artifact_invalidation_key: (Gem::Specification spec) -> String
     def artifact_files_for: (Gem::Specification spec) -> Array[String]
@@ -230,6 +231,9 @@ module GemDocs
 
   class ArtifactCache
     SCHEMA_VERSION: Integer
+    BUSY_TIMEOUT_MS: Integer
+    MAX_BUSY_RETRIES: Integer
+    BUSY_RETRY_DELAY: Float
     GEM_LOOKUP_TARGET: String
     ARTIFACT_VERSIONS: Hash[Symbol, Integer]
 
@@ -265,7 +269,7 @@ module GemDocs
     private
 
     attr_reader path: String
-    def with_database: { (SQLite3::Database database) -> untyped } -> untyped
+    def with_database: (?Integer attempt) { (SQLite3::Database database) -> untyped } -> untyped
     def ensure_schema!: (SQLite3::Database database) -> void
     def serialize_loaded_gem: (DocRegistry::LoadedGem loaded_gem) -> Hash[String, untyped]
     def serialize_entry: (DocRegistry::Entry entry) -> Hash[String, untyped]

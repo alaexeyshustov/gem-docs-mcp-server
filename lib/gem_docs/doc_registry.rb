@@ -221,8 +221,10 @@ module GemDocs
       digest << "path:#{spec.full_gem_path}\n"
 
       artifact_files_for(spec).sort.each do |file|
+        stat = File.stat(file)
         digest << "file:#{file.delete_prefix("#{spec.full_gem_path}/")}\n"
-        digest << File.binread(file)
+        digest << "size:#{stat.size}\n"
+        digest << "mtime:#{stat.mtime.to_r}\n"
       end
 
       digest.hexdigest
@@ -232,13 +234,6 @@ module GemDocs
       files = ruby_files_for(spec)
       yardoc = yardoc_path_for(spec)
       files << yardoc if File.file?(yardoc)
-
-      if File.directory?(spec.doc_dir)
-        files.concat(
-          Dir.glob(File.join(spec.doc_dir, "**", "*")).select { |path| File.file?(path) }
-        )
-      end
-
       files.uniq
     end
 
@@ -251,11 +246,14 @@ module GemDocs
     def fetch_cached_loaded_gem(spec, invalidation_key:)
       return unless @cache && invalidation_key
 
-      @cache.fetch_loaded_gem(
+      cached_gem = @cache.fetch_loaded_gem(
         gem_name: spec.name,
         gem_version: spec.version.to_s,
         invalidation_key: invalidation_key
       )
+      return unless cached_gem
+
+      hydrate_cached_loaded_gem(spec, cached_gem)
     rescue StandardError
       nil
     end
@@ -266,6 +264,25 @@ module GemDocs
       @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
     rescue StandardError
       nil
+    end
+
+    def hydrate_cached_loaded_gem(spec, loaded_gem)
+      return loaded_gem unless loaded_gem.doc_source == :rdoc
+
+      LoadedGem.new(
+        name: loaded_gem.name,
+        version: loaded_gem.version,
+        summary: loaded_gem.summary,
+        description: loaded_gem.description,
+        homepage: loaded_gem.homepage,
+        license: loaded_gem.license,
+        path: loaded_gem.path,
+        doc_source: loaded_gem.doc_source,
+        objects: loaded_gem.objects,
+        entry_points: loaded_gem.entry_points,
+        dynamic_lookup: ->(path) { load_rdoc_object(spec, path) },
+        lazy_paths: loaded_gem.objects.map(&:path)
+      )
     end
 
     def cache_key_for(name, version)

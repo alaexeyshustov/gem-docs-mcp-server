@@ -7,6 +7,9 @@ require "sqlite3"
 module GemDocs
   class ArtifactCache
     SCHEMA_VERSION = 1
+    BUSY_TIMEOUT_MS = 5_000
+    MAX_BUSY_RETRIES = 2
+    BUSY_RETRY_DELAY = 0.05
     GEM_LOOKUP_TARGET = "__gem__"
     ARTIFACT_VERSIONS = {
       source: 1,
@@ -130,11 +133,18 @@ module GemDocs
 
     attr_reader :path
 
-    def with_database
+    def with_database(attempt = 0)
       FileUtils.mkdir_p(File.dirname(path))
+      database = nil
       database = SQLite3::Database.new(path)
+      database.busy_timeout = BUSY_TIMEOUT_MS
       ensure_schema!(database)
       yield database
+    rescue SQLite3::BusyException, SQLite3::LockedException
+      raise if attempt >= MAX_BUSY_RETRIES
+
+      sleep(BUSY_RETRY_DELAY * (attempt + 1))
+      with_database(attempt + 1) { |retry_database| yield retry_database }
     ensure
       database&.close
     end
