@@ -74,6 +74,23 @@ RSpec.describe GemDocs::GemLoader do
       end
     end
 
+    it "detects the RDoc path through the RDoc provider" do
+      with_source_fixture_gem("rdoc_available", source: "module RdocAvailable; end\n") do |spec|
+        yard_provider = instance_double(GemDocs::DocProviders::Yard, available?: false)
+        rdoc_provider = instance_double(GemDocs::DocProviders::Rdoc, available?: true)
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: ->(_resolved_spec) { :source_only },
+          source_loader: ->(_resolved_spec) { raise "unused" },
+          loaded_gem_builder: ->(_resolved_spec, _objects, _doc_source) { raise "unused" },
+          yard_provider: yard_provider,
+          rdoc_provider: rdoc_provider
+        )
+
+        expect(loader.detect_source(spec)).to eq(:rdoc)
+      end
+    end
+
     it "detects gems with no documentable objects" do
       with_empty_fixture_gem("empty_fixture") do |spec|
         registry = GemDocs::DocRegistry.new(cache: false)
@@ -125,6 +142,22 @@ RSpec.describe GemDocs::GemLoader do
         expect(loaded_gem.entry_points).to include("WellDocumented::Widget#call")
         expect(loaded_gem.objects.find { |object| object.path == "WellDocumented::Widget#call" }&.docstring)
           .to include("Performs work.")
+      end
+    end
+
+    it "builds a loaded gem for RDoc-backed gems through the RDoc provider" do
+      with_source_fixture_gem("rdoc_available", source: "module RdocAvailable; end\n") do
+        loaded_gem = instance_double(GemDocs::DocRegistry::LoadedGem, doc_source: :rdoc)
+        rdoc_provider = instance_double(GemDocs::DocProviders::Rdoc, load: loaded_gem, available?: true)
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: ->(_resolved_spec) { :source_only },
+          source_loader: ->(_resolved_spec) { raise "unused" },
+          loaded_gem_builder: ->(_resolved_spec, _objects, _doc_source) { raise "unused" },
+          rdoc_provider: rdoc_provider
+        )
+
+        expect(loader.load("rdoc_available")).to equal(loaded_gem)
       end
     end
 

@@ -345,6 +345,34 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "keeps the end-of-options safeguard for lazy ri lookups" do
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
+        commands = []
+
+        shell_runner = lambda do |command|
+          commands << command
+
+          case command.last
+          when "-l"
+            { stdout: "RdocOnly::--\n", stderr: "", success: true }
+          when "RdocOnly::--"
+            { stdout: "RdocOnly::--\n\nFlag-like target.\n", stderr: "", success: true }
+          else
+            raise "unexpected command: #{command.inspect}"
+          end
+        end
+
+        registry = described_class.new(shell_runner: shell_runner, cache: false)
+
+        object = registry.find_object("RdocOnly::--", gem_name: "rdoc_only")
+
+        expect(object&.docstring).to eq("Flag-like target.")
+        expect(commands).to include(
+          [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "--", "RdocOnly::--" ]
+        )
+      end
+    end
+
     it "rebuilds cached rdoc gems with lazy ri lookups across registry instances" do
       stub_fixture_gem("rdoc_only", registry_class: described_class) do
         Dir.mktmpdir do |tmpdir|

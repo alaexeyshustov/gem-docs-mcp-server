@@ -2,19 +2,28 @@
 
 module GemDocs
   class GemLoader
-    def initialize(spec_resolver:, doc_source_detector:, source_loader:, loaded_gem_builder:, yard_provider: nil)
+    def initialize(
+      spec_resolver:,
+      doc_source_detector:,
+      source_loader:,
+      loaded_gem_builder:,
+      yard_provider: nil,
+      rdoc_provider: nil
+    )
       @spec_resolver = spec_resolver
       @doc_source_detector = doc_source_detector
       @source_loader = source_loader
       @loaded_gem_builder = loaded_gem_builder
       @yard_provider = yard_provider
+      @rdoc_provider = rdoc_provider
     end
 
     def load(name, version: nil, spec: nil)
       spec ||= resolve_spec!(name, version: version)
       doc_source = detect_source(spec)
       return @yard_provider.load(spec) if doc_source == :yard && @yard_provider
-      return load_fallback(spec) if doc_source == :yard
+      return @rdoc_provider.load(spec) if doc_source == :rdoc && @rdoc_provider
+      return load_fallback(spec) if [ :yard, :rdoc ].include?(doc_source)
       return unless doc_source == :source_only || doc_source == :none
 
       load_fallback(spec, doc_source: doc_source)
@@ -22,12 +31,13 @@ module GemDocs
 
     def detect_source(spec)
       return :yard if @yard_provider&.available?(spec)
+      return :rdoc if @rdoc_provider&.available?(spec)
 
       @doc_source_detector.call(spec)
     end
 
     def provider_available?(spec)
-      !@yard_provider.nil? && @yard_provider.available?(spec)
+      @yard_provider&.available?(spec) || @rdoc_provider&.available?(spec) || false
     end
 
     def load_fallback(spec, doc_source: nil)

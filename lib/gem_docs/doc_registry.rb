@@ -122,19 +122,33 @@ module GemDocs
       @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
       @cache = cache == false ? nil : (cache || GemDocs::ArtifactCache.default(root: Dir.pwd))
+      loaded_gem_builder = lambda do |spec, objects, doc_source, dynamic_lookup: nil, lazy_paths: []|
+        build_loaded_gem(
+          spec,
+          objects: objects,
+          doc_source: doc_source,
+          dynamic_lookup: dynamic_lookup,
+          lazy_paths: lazy_paths
+        )
+      end
       yard_provider = GemDocs::DocProviders::Yard.new(
         loaded_gem_builder: lambda do |spec, objects, doc_source|
-          build_source_loaded_gem(spec, objects: objects, doc_source: doc_source)
+          loaded_gem_builder.call(spec, objects, doc_source)
         end
+      )
+      @rdoc_provider = GemDocs::DocProviders::Rdoc.new(
+        shell_runner: ->(command) { run_shell(*command) },
+        loaded_gem_builder: loaded_gem_builder
       )
       @gem_loader = gem_loader || GemLoader.new(
         spec_resolver: self.class.method(:gem_spec_for),
         doc_source_detector: method(:detect_doc_source),
         source_loader: method(:load_source_objects),
         loaded_gem_builder: lambda do |spec, objects, doc_source|
-          build_source_loaded_gem(spec, objects: objects, doc_source: doc_source)
+          loaded_gem_builder.call(spec, objects, doc_source)
         end,
-        yard_provider: yard_provider
+        yard_provider: yard_provider,
+        rdoc_provider: @rdoc_provider
       )
     end
 
@@ -155,11 +169,8 @@ module GemDocs
         return cached_gem
       end
 
-      loaded_gem = if @gem_loader.provider_available?(spec) || !File.directory?(spec.doc_dir)
-        @gem_loader.load(name, version: normalized_version, spec: spec) || build_loaded_gem(spec)
-      else
-        build_loaded_gem(spec)
-      end
+      loaded_gem = @gem_loader.load(name, version: normalized_version, spec: spec) ||
+        build_loaded_gem(spec, objects: [], doc_source: :none)
       @doc_sources[cache_key] = loaded_gem.doc_source
       persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
@@ -238,7 +249,7 @@ module GemDocs
     private
 
     def detect_doc_source(spec)
-      return :rdoc if rdoc_available?(spec)
+      return :rdoc if @rdoc_provider.available?(spec)
       return :source_only if source_objects_available?(spec)
 
       :none
@@ -353,20 +364,7 @@ module GemDocs
     def hydrate_cached_loaded_gem(spec, loaded_gem)
       return loaded_gem unless loaded_gem.doc_source == :rdoc
 
-      LoadedGem.new(
-        name: loaded_gem.name,
-        version: loaded_gem.version,
-        summary: loaded_gem.summary,
-        description: loaded_gem.description,
-        homepage: loaded_gem.homepage,
-        license: loaded_gem.license,
-        path: loaded_gem.path,
-        doc_source: loaded_gem.doc_source,
-        objects: loaded_gem.objects,
-        entry_points: loaded_gem.entry_points,
-        dynamic_lookup: ->(path) { load_rdoc_object(spec, path) },
-        lazy_paths: loaded_gem.objects.map(&:path)
-      )
+      @rdoc_provider.hydrate_loaded_gem(spec, loaded_gem)
     end
 
     def cache_key_for(name, version)
@@ -388,30 +386,7 @@ module GemDocs
       nil
     end
 
-    def build_loaded_gem(spec)
-      loaded_gem = if (rdoc_objects = load_rdoc_objects(spec))
-        LoadedGem.new(
-          name: spec.name,
-          version: spec.version.to_s,
-          summary: spec.summary,
-          description: gem_description(spec),
-          homepage: spec.homepage,
-          license: gem_license(spec),
-          path: spec.full_gem_path,
-          doc_source: :rdoc,
-          objects: rdoc_objects,
-          entry_points: infer_entry_points(spec.name, rdoc_objects, doc_source: :rdoc),
-          dynamic_lookup: ->(path) { load_rdoc_object(spec, path) },
-          lazy_paths: rdoc_objects.map(&:path)
-        )
-      else
-        @gem_loader.load_fallback(spec)
-      end
-
-      loaded_gem
-    end
-
-    def build_source_loaded_gem(spec, objects:, doc_source:)
+    def build_loaded_gem(spec, objects:, doc_source:, dynamic_lookup: nil, lazy_paths: [])
       LoadedGem.new(
         name: spec.name,
         version: spec.version.to_s,
@@ -422,8 +397,14 @@ module GemDocs
         path: spec.full_gem_path,
         doc_source: doc_source,
         objects: objects,
-        entry_points: infer_entry_points(spec.name, objects, doc_source: doc_source)
+        entry_points: infer_entry_points(spec.name, objects, doc_source: doc_source),
+        dynamic_lookup: dynamic_lookup,
+        lazy_paths: lazy_paths
       )
+    end
+
+    def build_source_loaded_gem(spec, objects:, doc_source:)
+      build_loaded_gem(spec, objects: objects, doc_source: doc_source)
     end
 
     def gem_description(spec)
@@ -469,71 +450,8 @@ module GemDocs
         classes.first
     end
 
-    def load_rdoc_objects(spec)
-      return unless File.directory?(spec.doc_dir)
-
-      response = run_shell(*ri_list_command(spec))
-      return if command_execution_failed?(response)
-
-      raise GemDocs::RegistryError.new("Failed to load ri registry: #{response[:stderr]}") unless response[:success]
-
-      names = response[:stdout].lines.map(&:strip).reject(&:empty?)
-      return if names.empty?
-
-      names.map do |name|
-        build_rdoc_index_entry(name)
-      end
-    end
-
     def yardoc_path_for(spec)
       File.join(spec.full_gem_path, ".yardoc")
-    end
-
-    def rdoc_available?(spec)
-      return false unless File.directory?(spec.doc_dir)
-
-      response = run_shell(*ri_list_command(spec))
-      return false if command_execution_failed?(response)
-
-      raise GemDocs::RegistryError.new("Failed to load ri registry: #{response[:stderr]}") unless response[:success]
-
-      response[:stdout].each_line.any? { |line| !line.strip.empty? }
-    end
-
-    def build_rdoc_index_entry(name)
-      Entry.new(
-        path: name,
-        name: name.split("::").last,
-        kind: :class,
-        visibility: :public,
-        docstring: "",
-        signature: name,
-        source_location: nil,
-        superclass: nil,
-        doc_source: :rdoc,
-        tags: {},
-        aliases: []
-      )
-    end
-
-    def load_rdoc_object(spec, path)
-      response = run_shell(*ri_command(spec, path))
-      return unless response[:success]
-
-      signature, docstring = parse_rdoc_output(response[:stdout])
-      Entry.new(
-        path: path,
-        name: path.split(/[#.]/).last,
-        kind: rdoc_kind_for(path, signature),
-        visibility: :public,
-        docstring: docstring,
-        signature: signature.empty? ? path : signature,
-        source_location: nil,
-        superclass: nil,
-        doc_source: :rdoc,
-        tags: {},
-        aliases: []
-      )
     end
 
     def load_source_objects(spec)
@@ -755,14 +673,6 @@ module GemDocs
       :class
     end
 
-    def ri_list_command(spec)
-      [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "-l" ]
-    end
-
-    def ri_command(spec, *arguments)
-      [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "--", *arguments ]
-    end
-
     def ri_core_command(*arguments)
       [ "ri", "--no-pager", "--", *arguments ]
     end
@@ -778,10 +688,6 @@ module GemDocs
       { stdout: stdout, stderr: stderr, success: status.success? }
     rescue SystemCallError => e
       { stdout: "", stderr: e.message, success: false, error: e }
-    end
-
-    def command_execution_failed?(response)
-      response[:error].is_a?(SystemCallError)
     end
 
     def push_children(stack, node, namespace_path, class_method_context = false)
