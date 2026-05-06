@@ -31,6 +31,28 @@ RSpec.describe GemDocs::GemLoader do
   end
 
   describe "#detect_source" do
+    it "detects the YARD path through the YARD provider" do
+      with_yard_fixture_gem("well_documented", source: "module WellDocumented; end\n") do |spec|
+        registry = GemDocs::DocRegistry.new(cache: false)
+        yard_provider = GemDocs::DocProviders::Yard.new(
+          loaded_gem_builder: lambda do |resolved_spec, objects, doc_source|
+            registry.send(:build_source_loaded_gem, resolved_spec, objects: objects, doc_source: doc_source)
+          end
+        )
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: registry.method(:detect_doc_source),
+          source_loader: registry.method(:load_source_objects),
+          loaded_gem_builder: lambda do |resolved_spec, objects, doc_source|
+            registry.send(:build_source_loaded_gem, resolved_spec, objects: objects, doc_source: doc_source)
+          end,
+          yard_provider: yard_provider
+        )
+
+        expect(loader.detect_source(spec)).to eq(:yard)
+      end
+    end
+
     it "detects the source-only fallback path" do
       with_source_fixture_gem("source_only", source: <<~RUBY) do |spec|
         module SourceOnly
@@ -68,6 +90,44 @@ RSpec.describe GemDocs::GemLoader do
   end
 
   describe "#load" do
+    it "builds a loaded gem for YARD-backed gems through the YARD provider" do
+      with_yard_fixture_gem("well_documented", source: <<~RUBY) do
+        module WellDocumented
+          class Widget
+            # Performs work.
+            #
+            # @param input [String]
+            # @return [String]
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        registry = GemDocs::DocRegistry.new(cache: false)
+        yard_provider = GemDocs::DocProviders::Yard.new(
+          loaded_gem_builder: lambda do |resolved_spec, objects, doc_source|
+            registry.send(:build_source_loaded_gem, resolved_spec, objects: objects, doc_source: doc_source)
+          end
+        )
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: registry.method(:detect_doc_source),
+          source_loader: registry.method(:load_source_objects),
+          loaded_gem_builder: lambda do |resolved_spec, objects, doc_source|
+            registry.send(:build_source_loaded_gem, resolved_spec, objects: objects, doc_source: doc_source)
+          end,
+          yard_provider: yard_provider
+        )
+
+        loaded_gem = loader.load("well_documented")
+
+        expect(loaded_gem.doc_source).to eq(:yard)
+        expect(loaded_gem.entry_points).to include("WellDocumented::Widget#call")
+        expect(loaded_gem.objects.find { |object| object.path == "WellDocumented::Widget#call" }&.docstring)
+          .to include("Performs work.")
+      end
+    end
+
     it "builds a loaded gem for source-only gems" do
       with_source_fixture_gem("source_only", source: <<~RUBY) do
         module SourceOnly
