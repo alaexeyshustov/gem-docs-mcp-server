@@ -37,7 +37,8 @@ module GemDocs
       doc_source_detector: ^(Gem::Specification) -> doc_source,
       source_loader: ^(Gem::Specification) -> Array[DocRegistry::Entry],
       loaded_gem_builder: ^(Gem::Specification, Array[DocRegistry::Entry], doc_source) -> DocRegistry::LoadedGem,
-      ?yard_provider: DocProviders::Yard?
+      ?yard_provider: DocProviders::Yard?,
+      ?rdoc_provider: DocProviders::Rdoc?
     ) -> void
     def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
     def detect_source: (Gem::Specification spec) -> doc_source
@@ -47,6 +48,35 @@ module GemDocs
   end
 
   module DocProviders
+    class Rdoc
+      def initialize: (
+        shell_runner: ^(Array[String]) -> command_response,
+        loaded_gem_builder: ^(
+          Gem::Specification,
+          Array[DocRegistry::Entry],
+          :rdoc,
+          dynamic_lookup: ^(String) -> DocRegistry::Entry?,
+          lazy_paths: Array[String]
+        ) -> DocRegistry::LoadedGem
+      ) -> void
+      def available?: (Gem::Specification spec) -> bool
+      def load: (Gem::Specification spec) -> DocRegistry::LoadedGem?
+      def lookup: (Gem::Specification spec, String path) -> DocRegistry::Entry?
+      def hydrate_loaded_gem: (Gem::Specification spec, DocRegistry::LoadedGem loaded_gem) -> DocRegistry::LoadedGem
+
+      private
+
+      def index_names_for: (Gem::Specification spec) -> Array[String]?
+      def build_index_entry: (String name) -> DocRegistry::Entry
+      def build_entry: (String path, String signature, String docstring) -> DocRegistry::Entry
+      def parse_output: (String output) -> [String, String]
+      def kind_for: (String path, String signature) -> entry_kind
+      def ri_list_command: (Gem::Specification spec) -> Array[String]
+      def ri_command: (Gem::Specification spec, *String arguments) -> Array[String]
+      def run_shell: (Array[String] command) -> command_response
+      def command_execution_failed?: (command_response response) -> bool
+    end
+
     class Yard
       YARD_MUTEX: Mutex
 
@@ -227,7 +257,13 @@ module GemDocs
     def detect_doc_source: (Gem::Specification spec) -> doc_source
     def cache_key_for: (String name, String? version) -> (String | [String, String])
     def normalize_version: (String? version) -> String?
-    def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
+    def build_loaded_gem: (
+      Gem::Specification spec,
+      objects: Array[Entry],
+      doc_source: doc_source,
+      ?dynamic_lookup: ^(String) -> Entry?,
+      ?lazy_paths: Array[String]
+    ) -> LoadedGem
     def build_source_loaded_gem: (Gem::Specification spec, objects: Array[Entry], doc_source: doc_source) -> LoadedGem
     def safe_artifact_invalidation_key: (Gem::Specification spec) -> String?
     def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> LoadedGem?
@@ -243,11 +279,7 @@ module GemDocs
     def gem_license: (Gem::Specification spec) -> String?
     def infer_entry_points: (String gem_name, Array[Entry] objects, doc_source: doc_source) -> Array[String]
     def select_primary_class: (Array[Entry] classes, String gem_name) -> Entry?
-    def load_rdoc_objects: (Gem::Specification spec) -> Array[Entry]?
     def yardoc_path_for: (Gem::Specification spec) -> String
-    def rdoc_available?: (Gem::Specification spec) -> bool
-    def build_rdoc_index_entry: (String name) -> Entry
-    def load_rdoc_object: (Gem::Specification spec, String path) -> Entry?
     def load_source_objects: (Gem::Specification spec) -> Array[Entry]
     def source_objects_available?: (Gem::Specification spec) -> bool
     def ruby_files_for: (Gem::Specification spec) -> Array[String]
@@ -263,12 +295,9 @@ module GemDocs
     def stringify_hash: (untyped value) -> untyped
     def parse_rdoc_output: (String output) -> [String, String]
     def rdoc_kind_for: (String path, String signature) -> entry_kind
-    def ri_list_command: (Gem::Specification spec) -> Array[String]
-    def ri_command: (Gem::Specification spec, *String arguments) -> Array[String]
     def ri_core_command: (*String arguments) -> Array[String]
     def run_shell: (*String command) -> command_response
     def run_command: (Array[String] command) -> command_response
-    def command_execution_failed?: (command_response response) -> bool
     def push_children: (Array[[Prism::Node, String?, bool]] stack, Prism::Node node, String? namespace_path, ?bool class_method_context) -> Array[[Prism::Node, String?, bool]]?
     def find_in_ancestor_chain: (LoadedGem loaded_gem, String path) -> Entry?
   end
