@@ -27,12 +27,13 @@ module GemDocs
       end
 
       def load_objects(yardoc)
+        # @type var objects: Array[GemDocs::DocRegistry::Entry]
+        objects = []
+
         YARD_MUTEX.synchronize do
           previous_yardoc = YARD::Registry.yardoc_file
           YARD::Registry.clear
           YARD::Registry.load!(yardoc)
-
-          objects = [] # : Array[GemDocs::DocRegistry::Entry]
           queue = YARD::Registry.root.children.reverse
 
           until queue.empty?

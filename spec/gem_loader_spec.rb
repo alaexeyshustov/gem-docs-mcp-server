@@ -128,6 +128,32 @@ RSpec.describe GemDocs::GemLoader do
       end
     end
 
+    it "falls back to source loading when the detector returns :yard without a provider" do
+      with_source_fixture_gem("source_only", source: <<~RUBY) do
+        module SourceOnly
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        registry = GemDocs::DocRegistry.new(cache: false)
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: ->(_resolved_spec) { :yard },
+          source_loader: registry.method(:load_source_objects),
+          loaded_gem_builder: lambda do |resolved_spec, objects, doc_source|
+            registry.send(:build_source_loaded_gem, resolved_spec, objects: objects, doc_source: doc_source)
+          end
+        )
+
+        loaded_gem = loader.load("source_only")
+
+        expect(loaded_gem.doc_source).to eq(:source_only)
+        expect(loaded_gem.objects.map(&:path)).to include("SourceOnly", "SourceOnly::Widget", "SourceOnly::Widget#call")
+      end
+    end
+
     it "builds a loaded gem for source-only gems" do
       with_source_fixture_gem("source_only", source: <<~RUBY) do
         module SourceOnly

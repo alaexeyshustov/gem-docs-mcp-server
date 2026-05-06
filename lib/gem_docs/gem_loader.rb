@@ -13,7 +13,8 @@ module GemDocs
     def load(name, version: nil, spec: nil)
       spec ||= resolve_spec!(name, version: version)
       doc_source = detect_source(spec)
-      return @yard_provider.load(spec) if doc_source == :yard
+      return @yard_provider.load(spec) if doc_source == :yard && @yard_provider
+      return load_fallback(spec) if doc_source == :yard
       return unless doc_source == :source_only || doc_source == :none
 
       load_fallback(spec, doc_source: doc_source)
