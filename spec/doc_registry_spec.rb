@@ -16,7 +16,7 @@ RSpec.describe GemDocs::DocRegistry do
         )
         gem_loader = instance_double(GemDocs::GemLoader)
         allow(gem_loader).to receive(:resolve_spec!).with("source_only", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:load).with("source_only", version: nil, spec: spec).and_return(loaded_gem)
+        allow(gem_loader).to receive(:load_fallback).with(spec).and_return(loaded_gem)
 
         registry = described_class.new(cache: false, gem_loader: gem_loader)
 
@@ -451,6 +451,29 @@ RSpec.describe GemDocs::DocRegistry do
         expect(loaded_gem.doc_source).to eq(:source_only)
         expect(registry.find_object("RiMissing::Widget#call", gem_name: "ri_missing")&.signature)
           .to eq("RiMissing::Widget#call()")
+      end
+    end
+
+    it "loads the ri index once for rdoc gems" do
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
+        commands = []
+
+        shell_runner = lambda do |command|
+          commands << command
+
+          case command.last
+          when "-l"
+            { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+          else
+            raise "unexpected command: #{command.inspect}"
+          end
+        end
+
+        registry = described_class.new(shell_runner: shell_runner, cache: false)
+        loaded_gem = registry.load_gem("rdoc_only")
+
+        expect(loaded_gem.doc_source).to eq(:rdoc)
+        expect(commands).to eq([ [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "-l" ] ])
       end
     end
 

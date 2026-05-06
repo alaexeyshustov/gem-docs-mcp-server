@@ -153,7 +153,7 @@ module GemDocs
         return cached_gem
       end
 
-      loaded_gem = @gem_loader.load(name, version: normalized_version, spec: spec) || build_loaded_gem(spec)
+      loaded_gem = build_loaded_gem(spec)
       @doc_sources[cache_key] = loaded_gem.doc_source
       persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
@@ -414,8 +414,7 @@ module GemDocs
           lazy_paths: rdoc_objects.map(&:path)
         )
       else
-        objects = load_source_objects(spec)
-        build_source_loaded_gem(spec, objects: objects, doc_source: objects.empty? ? :none : :source_only)
+        @gem_loader.load_fallback(spec)
       end
 
       loaded_gem

@@ -114,4 +114,32 @@ RSpec.describe GemDocs::GemLoader do
       end
     end
   end
+
+  describe "#load_fallback" do
+    it "builds fallback loaded gems without re-detecting the doc source" do
+      with_source_fixture_gem("source_only", source: <<~RUBY) do |spec|
+        module SourceOnly
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        registry = GemDocs::DocRegistry.new(cache: false)
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: ->(_resolved_spec) { raise "unused" },
+          source_loader: registry.method(:load_source_objects),
+          loaded_gem_builder: lambda do |resolved_spec, objects, doc_source|
+            registry.send(:build_source_loaded_gem, resolved_spec, objects: objects, doc_source: doc_source)
+          end
+        )
+
+        loaded_gem = loader.load_fallback(spec)
+
+        expect(loaded_gem.doc_source).to eq(:source_only)
+        expect(loaded_gem.objects.map(&:path)).to include("SourceOnly", "SourceOnly::Widget", "SourceOnly::Widget#call")
+      end
+    end
+  end
 end

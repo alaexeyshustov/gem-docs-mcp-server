@@ -14,17 +14,18 @@ module GemDocs
       doc_source = detect_source(spec)
       return unless doc_source == :source_only || doc_source == :none
 
-      # @type var objects: Array[GemDocs::DocRegistry::Entry]
-      objects = if doc_source == :source_only
-        @source_loader.call(spec)
-      else
-        []
-      end
-      @loaded_gem_builder.call(spec, objects, doc_source)
+      load_fallback(spec, doc_source: doc_source)
     end
 
     def detect_source(spec)
       @doc_source_detector.call(spec)
+    end
+
+    def load_fallback(spec, doc_source: nil)
+      # @type var objects: Array[GemDocs::DocRegistry::Entry]
+      objects = @source_loader.call(spec)
+      resolved_doc_source = doc_source || (objects.empty? ? :none : :source_only)
+      @loaded_gem_builder.call(spec, objects, resolved_doc_source)
     end
 
     def resolve_spec!(name, version: nil)

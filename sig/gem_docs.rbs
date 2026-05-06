@@ -40,6 +40,7 @@ module GemDocs
     ) -> void
     def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
     def detect_source: (Gem::Specification spec) -> doc_source
+    def load_fallback: (Gem::Specification spec, ?doc_source: doc_source?) -> DocRegistry::LoadedGem
     def resolve_spec!: (String name, ?version: String?) -> Gem::Specification
   end
 
