@@ -16,11 +16,31 @@ RSpec.describe GemDocs::DocRegistry do
         )
         gem_loader = instance_double(GemDocs::GemLoader)
         allow(gem_loader).to receive(:resolve_spec!).with("source_only", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:load_fallback).with(spec).and_return(loaded_gem)
+        allow(gem_loader).to receive(:provider_available?).with(spec).and_return(false)
+        allow(gem_loader).to receive(:load).with("source_only", version: nil, spec: spec).and_return(loaded_gem)
 
         registry = described_class.new(cache: false, gem_loader: gem_loader)
 
         expect(registry.load_gem("source_only")).to equal(loaded_gem)
+      end
+    end
+
+    it "uses the gem loader for the YARD path" do
+      with_yard_fixture_gem("well_documented", source: "module WellDocumented; end\n") do |spec|
+        loaded_gem = instance_double(
+          GemDocs::DocRegistry::LoadedGem,
+          doc_source: :yard,
+          name: "well_documented",
+          version: "0.1.0"
+        )
+        gem_loader = instance_double(GemDocs::GemLoader)
+        allow(gem_loader).to receive(:resolve_spec!).with("well_documented", version: nil).and_return(spec)
+        allow(gem_loader).to receive(:provider_available?).with(spec).and_return(true)
+        allow(gem_loader).to receive(:load).with("well_documented", version: nil, spec: spec).and_return(loaded_gem)
+
+        registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+        expect(registry.load_gem("well_documented")).to equal(loaded_gem)
       end
     end
 

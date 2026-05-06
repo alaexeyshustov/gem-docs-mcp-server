@@ -36,12 +36,39 @@ module GemDocs
       spec_resolver: ^(String, ?version: String?) -> Gem::Specification?,
       doc_source_detector: ^(Gem::Specification) -> doc_source,
       source_loader: ^(Gem::Specification) -> Array[DocRegistry::Entry],
-      loaded_gem_builder: ^(Gem::Specification, Array[DocRegistry::Entry], doc_source) -> DocRegistry::LoadedGem
+      loaded_gem_builder: ^(Gem::Specification, Array[DocRegistry::Entry], doc_source) -> DocRegistry::LoadedGem,
+      ?yard_provider: DocProviders::Yard?
     ) -> void
     def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
     def detect_source: (Gem::Specification spec) -> doc_source
+    def provider_available?: (Gem::Specification spec) -> bool
     def load_fallback: (Gem::Specification spec, ?doc_source: doc_source?) -> DocRegistry::LoadedGem
     def resolve_spec!: (String name, ?version: String?) -> Gem::Specification
+  end
+
+  module DocProviders
+    class Yard
+      YARD_MUTEX: Mutex
+
+      def initialize: (
+        loaded_gem_builder: ^(Gem::Specification, Array[DocRegistry::Entry], :yard) -> DocRegistry::LoadedGem
+      ) -> void
+      def available?: (Gem::Specification spec) -> bool
+      def load: (Gem::Specification spec) -> DocRegistry::LoadedGem
+
+      private
+
+      def yardoc_path_for: (Gem::Specification spec) -> String
+      def load_objects: (String yardoc) -> Array[DocRegistry::Entry]
+      def build_namespace_entry: (YARD::CodeObjects::NamespaceObject object) -> DocRegistry::Entry
+      def build_method_entry: (YARD::CodeObjects::MethodObject object) -> DocRegistry::Entry
+      def build_constant_entry: (YARD::CodeObjects::ConstantObject object) -> DocRegistry::Entry
+      def source_location_for: (YARD::CodeObjects::BaseObject object) -> String?
+      def superclass_for: (YARD::CodeObjects::NamespaceObject object) -> String?
+      def tags_for: (untyped object) -> Hash[Symbol, untyped]
+      def normalize_tag: (untyped tag) -> (Hash[Symbol, untyped] | String)?
+      def aliases_for: (untyped object) -> Array[String]
+    end
   end
 
   class Config
@@ -212,7 +239,6 @@ module GemDocs
     def artifact_invalidation_key: (Gem::Specification spec) -> String
     def artifact_files_for: (Gem::Specification spec) -> Array[String]
     def resolve_spec: (String name, ?version: String?) -> Gem::Specification?
-    def load_yard_objects: (String yardoc) -> Array[Entry]
     def gem_description: (Gem::Specification spec) -> String?
     def gem_license: (Gem::Specification spec) -> String?
     def infer_entry_points: (String gem_name, Array[Entry] objects, doc_source: doc_source) -> Array[String]
@@ -222,9 +248,6 @@ module GemDocs
     def rdoc_available?: (Gem::Specification spec) -> bool
     def build_rdoc_index_entry: (String name) -> Entry
     def load_rdoc_object: (Gem::Specification spec, String path) -> Entry?
-    def build_yard_namespace_entry: (YARD::CodeObjects::NamespaceObject object) -> Entry
-    def build_yard_method_entry: (YARD::CodeObjects::MethodObject object) -> Entry
-    def build_yard_constant_entry: (YARD::CodeObjects::ConstantObject object) -> Entry
     def load_source_objects: (Gem::Specification spec) -> Array[Entry]
     def source_objects_available?: (Gem::Specification spec) -> bool
     def ruby_files_for: (Gem::Specification spec) -> Array[String]
@@ -237,11 +260,6 @@ module GemDocs
     def join_constant_path: (String? namespace_path, String constant_path) -> String
     def resolve_constant_reference: (String? namespace_path, String? constant_path) -> String?
     def format_source_location: (String file, Integer line) -> String
-    def yard_source_location: (YARD::CodeObjects::BaseObject object) -> String?
-    def yard_superclass: (YARD::CodeObjects::NamespaceObject object) -> String?
-    def yard_tags: (untyped object) -> Hash[Symbol, untyped]
-    def normalize_yard_tag: (untyped tag) -> (Hash[Symbol, untyped] | String)?
-    def yard_aliases: (untyped object) -> Array[String]
     def stringify_hash: (untyped value) -> untyped
     def parse_rdoc_output: (String output) -> [String, String]
     def rdoc_kind_for: (String path, String signature) -> entry_kind

@@ -2,14 +2,10 @@
 
 require "open3"
 require "prism"
-require "yard"
 require "digest"
 
 module GemDocs
   class DocRegistry
-    YARD_MUTEX = Mutex.new
-    private_constant :YARD_MUTEX
-
     class Entry < Data.define(
       :path,
       :name,
@@ -126,13 +122,19 @@ module GemDocs
       @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
       @cache = cache == false ? nil : (cache || GemDocs::ArtifactCache.default(root: Dir.pwd))
+      yard_provider = GemDocs::DocProviders::Yard.new(
+        loaded_gem_builder: lambda do |spec, objects, doc_source|
+          build_source_loaded_gem(spec, objects: objects, doc_source: doc_source)
+        end
+      )
       @gem_loader = gem_loader || GemLoader.new(
         spec_resolver: self.class.method(:gem_spec_for),
         doc_source_detector: method(:detect_doc_source),
         source_loader: method(:load_source_objects),
         loaded_gem_builder: lambda do |spec, objects, doc_source|
           build_source_loaded_gem(spec, objects: objects, doc_source: doc_source)
-        end
+        end,
+        yard_provider: yard_provider
       )
     end
 
@@ -153,7 +155,11 @@ module GemDocs
         return cached_gem
       end
 
-      loaded_gem = build_loaded_gem(spec)
+      loaded_gem = if @gem_loader.provider_available?(spec) || !File.directory?(spec.doc_dir)
+        @gem_loader.load(name, version: normalized_version, spec: spec) || build_loaded_gem(spec)
+      else
+        build_loaded_gem(spec)
+      end
       @doc_sources[cache_key] = loaded_gem.doc_source
       persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
@@ -232,7 +238,6 @@ module GemDocs
     private
 
     def detect_doc_source(spec)
-      return :yard if File.exist?(yardoc_path_for(spec))
       return :rdoc if rdoc_available?(spec)
       return :source_only if source_objects_available?(spec)
 
@@ -384,21 +389,7 @@ module GemDocs
     end
 
     def build_loaded_gem(spec)
-      loaded_gem = if File.exist?(yardoc_path_for(spec))
-        objects = load_yard_objects(yardoc_path_for(spec))
-        LoadedGem.new(
-          name: spec.name,
-          version: spec.version.to_s,
-          summary: spec.summary,
-          description: gem_description(spec),
-          homepage: spec.homepage,
-          license: gem_license(spec),
-          path: spec.full_gem_path,
-          doc_source: :yard,
-          objects: objects,
-          entry_points: infer_entry_points(spec.name, objects, doc_source: :yard)
-        )
-      elsif (rdoc_objects = load_rdoc_objects(spec))
+      loaded_gem = if (rdoc_objects = load_rdoc_objects(spec))
         LoadedGem.new(
           name: spec.name,
           version: spec.version.to_s,
@@ -433,40 +424,6 @@ module GemDocs
         objects: objects,
         entry_points: infer_entry_points(spec.name, objects, doc_source: doc_source)
       )
-    end
-
-    def load_yard_objects(yardoc)
-      YARD_MUTEX.synchronize do
-        previous_yardoc = YARD::Registry.yardoc_file
-        YARD::Registry.clear
-        YARD::Registry.load!(yardoc)
-
-        objects = []
-        queue = YARD::Registry.root.children.reverse
-
-        until queue.empty?
-          object = queue.pop
-
-          case object
-          when YARD::CodeObjects::ClassObject, YARD::CodeObjects::ModuleObject
-            objects << build_yard_namespace_entry(object)
-            queue.concat(object.constants(inherited: false).reverse)
-            queue.concat(object.meths(inherited: false).reverse)
-            queue.concat(object.children.grep(YARD::CodeObjects::NamespaceObject).reverse)
-          when YARD::CodeObjects::MethodObject
-            objects << build_yard_method_entry(object)
-          when YARD::CodeObjects::ConstantObject
-            objects << build_yard_constant_entry(object)
-          end
-        end
-
-        objects
-      ensure
-        YARD::Registry.clear
-        YARD::Registry.yardoc_file = previous_yardoc
-      end
-    rescue StandardError => e
-      raise GemDocs::RegistryError.new("Failed to load YARD registry: #{e.message}")
     end
 
     def gem_description(spec)
@@ -576,54 +533,6 @@ module GemDocs
         doc_source: :rdoc,
         tags: {},
         aliases: []
-      )
-    end
-
-    def build_yard_namespace_entry(object)
-      Entry.new(
-        path: object.path,
-        name: object.name.to_s,
-        kind: object.is_a?(YARD::CodeObjects::ClassObject) ? :class : :module,
-        visibility: object.visibility || :public,
-        docstring: object.docstring.to_s,
-        signature: object.path,
-        source_location: yard_source_location(object),
-        superclass: yard_superclass(object),
-        doc_source: :yard,
-        tags: yard_tags(object),
-        aliases: yard_aliases(object)
-      )
-    end
-
-    def build_yard_method_entry(object)
-      Entry.new(
-        path: object.path,
-        name: object.name.to_s,
-        kind: object.scope == :class ? :class_method : :instance_method,
-        visibility: object.visibility || :public,
-        docstring: object.docstring.to_s,
-        signature: object.signature || object.path,
-        source_location: yard_source_location(object),
-        superclass: nil,
-        doc_source: :yard,
-        tags: yard_tags(object),
-        aliases: yard_aliases(object)
-      )
-    end
-
-    def build_yard_constant_entry(object)
-      Entry.new(
-        path: object.path,
-        name: object.name.to_s,
-        kind: :constant,
-        visibility: object.visibility || :public,
-        docstring: object.docstring.to_s,
-        signature: object.path,
-        source_location: yard_source_location(object),
-        superclass: nil,
-        doc_source: :yard,
-        tags: yard_tags(object),
-        aliases: yard_aliases(object)
       )
     end
 
@@ -809,51 +718,6 @@ module GemDocs
 
     def format_source_location(file, line)
       "#{file}:#{line}"
-    end
-
-    def yard_source_location(object)
-      return unless object.file && object.line
-
-      format_source_location(object.file, object.line)
-    end
-
-    def yard_superclass(object)
-      return unless object.is_a?(YARD::CodeObjects::ClassObject)
-
-      superclass = object.superclass
-      return unless superclass
-
-      superclass.respond_to?(:path) ? superclass.path : superclass.to_s
-    end
-
-    def yard_tags(object)
-      return {} unless object.respond_to?(:tags)
-
-      object.tags.each_with_object({}) do |tag, grouped_tags|
-        normalized = normalize_yard_tag(tag)
-        next if normalized.nil?
-
-        grouped_tags[tag.tag_name.to_sym] ||= []
-        grouped_tags[tag.tag_name.to_sym] << normalized
-      end
-    end
-
-    def normalize_yard_tag(tag)
-      return tag.text.to_s.strip if tag.tag_name == "example"
-
-      payload = {}
-      payload[:name] = tag.name if tag.respond_to?(:name) && tag.name
-      payload[:types] = Array(tag.types).map(&:to_s) if tag.respond_to?(:types)
-      payload[:text] = tag.text.to_s.strip
-      payload
-    end
-
-    def yard_aliases(object)
-      return [] unless object.respond_to?(:aliases)
-
-      Array(object.aliases).filter_map do |alias_object|
-        alias_object.respond_to?(:path) ? alias_object.path : alias_object.to_s
-      end
     end
 
     def stringify_hash(value)
