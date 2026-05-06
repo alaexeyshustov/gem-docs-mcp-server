@@ -31,6 +31,18 @@ module GemDocs
   def self.config: (?root: String) -> Config
   def self.reset_config_cache!: -> void
 
+  class GemLoader
+    def initialize: (
+      spec_resolver: ^(String, ?version: String?) -> Gem::Specification?,
+      doc_source_detector: ^(Gem::Specification) -> doc_source,
+      source_loader: ^(Gem::Specification) -> Array[DocRegistry::Entry],
+      loaded_gem_builder: ^(Gem::Specification, Array[DocRegistry::Entry], doc_source) -> DocRegistry::LoadedGem
+    ) -> void
+    def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
+    def detect_source: (Gem::Specification spec) -> doc_source
+    def resolve_spec!: (String name, ?version: String?) -> Gem::Specification
+  end
+
   class Config
     FILE_NAME: String
     VALID_COLORS: Array[String]
@@ -168,7 +180,11 @@ module GemDocs
 
     def self.gem_spec_for: (String name, ?version: String?) -> Gem::Specification?
 
-    def initialize: (?shell_runner: ^(Array[String]) -> command_response, ?cache: ArtifactCache?) -> void
+    def initialize: (
+      ?shell_runner: ^(Array[String]) -> command_response,
+      ?cache: ArtifactCache?,
+      ?gem_loader: GemLoader?
+    ) -> void
     def load_gem: (String name, ?version: String?) -> LoadedGem
     def doc_source_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def artifact_invalidation_key_for: (String name, ?version: String?) -> String?
@@ -184,6 +200,7 @@ module GemDocs
     def cache_key_for: (String name, String? version) -> (String | [String, String])
     def normalize_version: (String? version) -> String?
     def build_loaded_gem: (Gem::Specification spec) -> LoadedGem
+    def build_source_loaded_gem: (Gem::Specification spec, objects: Array[Entry], doc_source: doc_source) -> LoadedGem
     def safe_artifact_invalidation_key: (Gem::Specification spec) -> String?
     def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> LoadedGem?
     def hydrate_cached_loaded_gem: (Gem::Specification spec, LoadedGem loaded_gem) -> LoadedGem
