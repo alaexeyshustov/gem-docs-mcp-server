@@ -121,11 +121,19 @@ module GemDocs
       end
     end
 
-    def initialize(shell_runner: nil, cache: nil)
+    def initialize(shell_runner: nil, cache: nil, gem_loader: nil)
       @loaded_gems = {}
       @doc_sources = {}
       @shell_runner = shell_runner || method(:run_command)
       @cache = cache == false ? nil : (cache || GemDocs::ArtifactCache.default(root: Dir.pwd))
+      @gem_loader = gem_loader || GemLoader.new(
+        spec_resolver: self.class.method(:gem_spec_for),
+        doc_source_detector: method(:detect_doc_source),
+        source_loader: method(:load_source_objects),
+        loaded_gem_builder: lambda do |spec, objects, doc_source|
+          build_source_loaded_gem(spec, objects: objects, doc_source: doc_source)
+        end
+      )
     end
 
     def load_gem(name, version: nil)
@@ -134,13 +142,7 @@ module GemDocs
       return loaded_gem if loaded_gem
 
       normalized_version = normalize_version(version)
-
-      spec = if normalized_version.nil?
-        self.class.gem_spec_for(name)
-      else
-        self.class.gem_spec_for(name, version: normalized_version)
-      end
-      raise GemDocs::GemNotFound.new(name) unless spec
+      spec = @gem_loader.resolve_spec!(name, version: normalized_version)
 
       invalidation_key = safe_artifact_invalidation_key(spec)
       cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
@@ -163,22 +165,15 @@ module GemDocs
       return loaded_gem.doc_source if loaded_gem
 
       normalized_version = normalize_version(version)
-      spec ||= if normalized_version.nil?
-        self.class.gem_spec_for(name)
-      else
-        self.class.gem_spec_for(name, version: normalized_version)
-      end
-      raise GemDocs::GemNotFound.new(name) unless spec
+      spec ||= @gem_loader.resolve_spec!(name, version: normalized_version)
 
       @doc_sources.fetch(cache_key) do
-        @doc_sources[cache_key] = detect_doc_source(spec)
+        @doc_sources[cache_key] = @gem_loader.detect_source(spec)
       end
     end
 
     def artifact_invalidation_key_for(name, version: nil)
-      spec = resolve_spec(name, version: version)
-      raise GemDocs::GemNotFound.new(name) unless spec
-
+      spec = @gem_loader.resolve_spec!(name, version: version)
       safe_artifact_invalidation_key(spec)
     end
 
@@ -383,10 +378,9 @@ module GemDocs
     end
 
     def resolve_spec(name, version: nil)
-      normalized_version = normalize_version(version)
-      return self.class.gem_spec_for(name) if normalized_version.nil?
-
-      self.class.gem_spec_for(name, version: normalized_version)
+      @gem_loader.resolve_spec!(name, version: version)
+    rescue GemDocs::GemNotFound
+      nil
     end
 
     def build_loaded_gem(spec)
@@ -420,22 +414,25 @@ module GemDocs
           lazy_paths: rdoc_objects.map(&:path)
         )
       else
-        objects = load_source_objects(spec)
-        LoadedGem.new(
-          name: spec.name,
-          version: spec.version.to_s,
-          summary: spec.summary,
-          description: gem_description(spec),
-          homepage: spec.homepage,
-          license: gem_license(spec),
-          path: spec.full_gem_path,
-          doc_source: objects.empty? ? :none : :source_only,
-          objects: objects,
-          entry_points: infer_entry_points(spec.name, objects, doc_source: objects.empty? ? :none : :source_only)
-        )
+        @gem_loader.load_fallback(spec)
       end
 
       loaded_gem
+    end
+
+    def build_source_loaded_gem(spec, objects:, doc_source:)
+      LoadedGem.new(
+        name: spec.name,
+        version: spec.version.to_s,
+        summary: spec.summary,
+        description: gem_description(spec),
+        homepage: spec.homepage,
+        license: gem_license(spec),
+        path: spec.full_gem_path,
+        doc_source: doc_source,
+        objects: objects,
+        entry_points: infer_entry_points(spec.name, objects, doc_source: doc_source)
+      )
     end
 
     def load_yard_objects(yardoc)

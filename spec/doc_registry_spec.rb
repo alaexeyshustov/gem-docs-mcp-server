@@ -6,6 +6,24 @@ require "gem_docs"
 
 RSpec.describe GemDocs::DocRegistry do
   describe "#load_gem" do
+    it "uses the gem loader for the source-only fallback path" do
+      with_source_fixture_gem("source_only", source: "module SourceOnly; end\n") do |spec|
+        loaded_gem = instance_double(
+          GemDocs::DocRegistry::LoadedGem,
+          doc_source: :source_only,
+          name: "source_only",
+          version: "0.1.0"
+        )
+        gem_loader = instance_double(GemDocs::GemLoader)
+        allow(gem_loader).to receive(:resolve_spec!).with("source_only", version: nil).and_return(spec)
+        allow(gem_loader).to receive(:load_fallback).with(spec).and_return(loaded_gem)
+
+        registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+        expect(registry.load_gem("source_only")).to equal(loaded_gem)
+      end
+    end
+
     it "loads the shared local YARD fixture through the shared helper" do
       stub_fixture_gem("yard", name: "yard_fixture", yard: true) do
         registry = described_class.new
@@ -436,6 +454,29 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "loads the ri index once for rdoc gems" do
+      stub_fixture_gem("rdoc_only", registry_class: described_class) do |spec|
+        commands = []
+
+        shell_runner = lambda do |command|
+          commands << command
+
+          case command.last
+          when "-l"
+            { stdout: "RdocOnly::Widget\n", stderr: "", success: true }
+          else
+            raise "unexpected command: #{command.inspect}"
+          end
+        end
+
+        registry = described_class.new(shell_runner: shell_runner, cache: false)
+        loaded_gem = registry.load_gem("rdoc_only")
+
+        expect(loaded_gem.doc_source).to eq(:rdoc)
+        expect(commands).to eq([ [ "ri", "--no-pager", "--no-standard-docs", "-d", spec.doc_dir, "-l" ] ])
+      end
+    end
+
     it "returns :none when no documentation or Ruby source files are available" do
       with_empty_fixture_gem("empty_fixture") do
         registry = described_class.new
@@ -468,6 +509,18 @@ RSpec.describe GemDocs::DocRegistry do
   end
 
   describe "#doc_source_for" do
+    it "uses the gem loader to detect no-doc gems" do
+      with_empty_fixture_gem("empty_fixture") do |spec|
+        gem_loader = instance_double(GemDocs::GemLoader)
+        allow(gem_loader).to receive(:resolve_spec!).with("empty_fixture", version: nil).and_return(spec)
+        allow(gem_loader).to receive(:detect_source).with(spec).and_return(:none)
+
+        registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+        expect(registry.doc_source_for("empty_fixture")).to eq(:none)
+      end
+    end
+
     it "reuses cached versioned loads for doc source lookups" do
       Dir.mktmpdir do |tmpdir|
         gem_root = File.join(tmpdir, "versioned-gem")
