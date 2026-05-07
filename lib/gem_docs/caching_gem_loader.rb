@@ -13,14 +13,19 @@ module GemDocs
     end
 
     def load(name, version: nil, spec: nil)
+      loaded_gem, = load_with_invalidation_key(name, version: version, spec: spec)
+      loaded_gem
+    end
+
+    def load_with_invalidation_key(name, version: nil, spec: nil)
       spec ||= resolve_spec!(name, version: version)
       invalidation_key = invalidation_key_for(spec)
       cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
-      return cached_gem if cached_gem
+      return [ cached_gem, invalidation_key ] if cached_gem
 
       loaded_gem = @loader.load(name, version: version, spec: spec)
       persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
-      loaded_gem
+      [ loaded_gem, invalidation_key ]
     end
 
     def detect_source(spec)

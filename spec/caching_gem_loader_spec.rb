@@ -146,6 +146,27 @@ RSpec.describe GemDocs::CachingGemLoader do
     end
   end
 
+  describe "#load_with_invalidation_key" do
+    it "returns the loaded gem together with the computed invalidation key" do
+      with_source_fixture_gem("cache_key_fixture", source: "module CacheKeyFixture; end\n") do |spec|
+        loaded_gem = build_loaded_gem(spec, source: :source_only)
+        base_loader = instance_double(GemDocs::GemLoader)
+        invalidation_key_provider = double("invalidation key provider", call: "digest-v1")
+
+        allow(base_loader).to receive(:resolve_spec!).with("cache_key_fixture", version: nil).and_return(spec)
+        allow(base_loader).to receive(:load).with("cache_key_fixture", version: nil, spec: spec).and_return(loaded_gem)
+
+        loader = described_class.new(
+          loader: base_loader,
+          cache: nil,
+          invalidation_key_provider: invalidation_key_provider
+        )
+
+        expect(loader.load_with_invalidation_key("cache_key_fixture")).to eq([ loaded_gem, "digest-v1" ])
+      end
+    end
+  end
+
   describe "#detect_source" do
     it "reads the doc source from cached snapshots" do
       with_source_fixture_gem("cached_source_fixture", source: "module CachedSourceFixture; end\n") do |spec|

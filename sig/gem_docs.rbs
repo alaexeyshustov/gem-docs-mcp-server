@@ -55,6 +55,11 @@ module GemDocs
       ?loaded_gem_hydrator: ^(Gem::Specification, DocRegistry::LoadedGem) -> DocRegistry::LoadedGem
     ) -> void
     def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
+    def load_with_invalidation_key: (
+      String name,
+      ?version: String?,
+      ?spec: Gem::Specification?
+    ) -> [DocRegistry::LoadedGem?, String?]
     def detect_source: (Gem::Specification spec) -> doc_source
     def invalidation_key_for: (Gem::Specification spec) -> String?
     def provider_available?: (Gem::Specification spec) -> bool
@@ -298,7 +303,8 @@ module GemDocs
     ) -> LoadedGem
     def build_source_loaded_gem: (Gem::Specification spec, objects: Array[Entry], doc_source: doc_source) -> LoadedGem
     def persist_source_artifacts: (LoadedGem loaded_gem, invalidation_key: String) -> Array[Entry]
-    def ensure_source_artifacts_persisted: (LoadedGem loaded_gem, invalidation_key: String) -> Array[Hash[Symbol, untyped]]
+    def ensure_source_artifacts_persisted: (LoadedGem loaded_gem, invalidation_key: String?) -> Array[Hash[Symbol, untyped]]
+    def load_with_invalidation_key: (String name, version: String?, spec: Gem::Specification) -> [LoadedGem?, String?]
     def source_artifact_payload: (LoadedGem loaded_gem, Entry entry) -> Hash[String, untyped]
     def hydrate_loaded_gem: (Gem::Specification spec, LoadedGem loaded_gem) -> LoadedGem
     def invalidation_key_for_spec: (Gem::Specification spec) -> String?

@@ -44,6 +44,28 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "reuses the caching loader invalidation key returned during load" do
+      with_source_fixture_gem("source_only", source: "module SourceOnly; end\n") do |spec|
+        loaded_gem = instance_double(
+          GemDocs::DocRegistry::LoadedGem,
+          doc_source: :source_only,
+          name: "source_only",
+          version: "0.1.0",
+          objects: []
+        )
+        gem_loader = instance_double(GemDocs::CachingGemLoader)
+        allow(gem_loader).to receive(:resolve_spec!).with("source_only", version: nil).and_return(spec)
+        allow(gem_loader).to receive(:load_with_invalidation_key)
+          .with("source_only", version: nil, spec: spec)
+          .and_return([ loaded_gem, "digest-v1" ])
+
+        registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+        expect(gem_loader).not_to receive(:invalidation_key_for)
+        expect(registry.load_gem("source_only")).to equal(loaded_gem)
+      end
+    end
+
     it "loads the shared local YARD fixture through the shared helper" do
       stub_fixture_gem("yard", name: "yard_fixture", yard: true) do
         registry = described_class.new

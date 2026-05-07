@@ -168,9 +168,8 @@ module GemDocs
 
       normalized_version = normalize_version(version)
       spec = @gem_loader.resolve_spec!(name, version: normalized_version)
-      loaded_gem = @gem_loader.load(name, version: normalized_version, spec: spec) ||
-        build_loaded_gem(spec, objects: [], doc_source: :none)
-      invalidation_key = invalidation_key_for_spec(spec)
+      loaded_gem, invalidation_key = load_with_invalidation_key(name, version: normalized_version, spec: spec)
+      loaded_gem ||= build_loaded_gem(spec, objects: [], doc_source: :none)
       @doc_sources[cache_key] = loaded_gem.doc_source
       ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
@@ -287,6 +286,14 @@ module GemDocs
       )
     rescue StandardError
       []
+    end
+
+    def load_with_invalidation_key(name, version:, spec:)
+      if @gem_loader.respond_to?(:load_with_invalidation_key)
+        @gem_loader.load_with_invalidation_key(name, version: version, spec: spec)
+      else
+        [ @gem_loader.load(name, version: version, spec: spec), invalidation_key_for_spec(spec) ]
+      end
     end
 
     def source_artifact_payload(loaded_gem, entry)
