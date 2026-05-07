@@ -668,6 +668,43 @@ RSpec.describe GemDocs::DocRegistry do
         expect(registry.artifact_invalidation_key_for("invalidation_delegate_fixture")).to eq("digest-v1")
       end
     end
+
+    it "reuses the caching loader invalidation key during a load" do
+      with_source_fixture_gem("stable_invalidation_fixture", source: <<~RUBY) do |spec|
+        module StableInvalidationFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        cache = GemDocs::ArtifactCache.new(path: File.join(spec.full_gem_path, "cache.sqlite3"))
+        invalidation_key_provider = instance_double(GemDocs::InvalidationKeyProvider)
+        base_loader = instance_double(GemDocs::GemLoader)
+        caching_loader = GemDocs::CachingGemLoader.new(
+          loader: base_loader,
+          cache: cache,
+          invalidation_key_provider: invalidation_key_provider
+        )
+
+        registry = described_class.new(cache: cache, gem_loader: caching_loader)
+        loaded_gem = registry.send(
+          :build_source_loaded_gem,
+          spec,
+          objects: registry.send(:load_source_objects, spec),
+          doc_source: :source_only
+        )
+
+        allow(base_loader).to receive(:resolve_spec!).with("stable_invalidation_fixture", version: nil).and_return(spec)
+        allow(base_loader).to receive(:load).with("stable_invalidation_fixture", version: nil, spec: spec).and_return(loaded_gem)
+        allow(base_loader).to receive(:provider_available?).and_return(false)
+        allow(invalidation_key_provider).to receive(:call).with(spec).and_return("digest-v1")
+
+        registry.load_gem("stable_invalidation_fixture")
+
+        expect(invalidation_key_provider).to have_received(:call).once
+      end
+    end
   end
 
   describe "#find_object" do

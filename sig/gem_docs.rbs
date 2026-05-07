@@ -64,6 +64,7 @@ module GemDocs
 
     def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> DocRegistry::LoadedGem?
     def persist_loaded_gem: (DocRegistry::LoadedGem? loaded_gem, invalidation_key: String?) -> bool?
+    def invalidation_cache_key: (Gem::Specification spec) -> [String, String]
   end
 
   class InvalidationKeyProvider

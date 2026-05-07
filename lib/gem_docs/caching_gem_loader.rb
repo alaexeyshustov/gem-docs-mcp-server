@@ -7,6 +7,9 @@ module GemDocs
       @cache = cache
       @invalidation_key_provider = invalidation_key_provider
       @loaded_gem_hydrator = loaded_gem_hydrator || ->(_spec, loaded_gem) { loaded_gem }
+      # @type var invalidation_keys: Hash[[String, String], String]
+      invalidation_keys = {}
+      @invalidation_keys = invalidation_keys
     end
 
     def load(name, version: nil, spec: nil)
@@ -29,7 +32,9 @@ module GemDocs
     end
 
     def invalidation_key_for(spec)
-      @invalidation_key_provider.call(spec)
+      @invalidation_keys.fetch(invalidation_cache_key(spec)) do
+        @invalidation_keys[invalidation_cache_key(spec)] = @invalidation_key_provider.call(spec)
+      end
     rescue StandardError
       nil
     end
@@ -65,6 +70,10 @@ module GemDocs
       @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
     rescue StandardError
       nil
+    end
+
+    def invalidation_cache_key(spec)
+      [ spec.full_gem_path, spec.version.to_s ]
     end
   end
 end

@@ -181,10 +181,11 @@ RSpec.describe GemDocs::CachingGemLoader do
         invalidation_key_provider: invalidation_key_provider,
         loaded_gem_hydrator: ->(_spec, loaded_gem) { loaded_gem }
       )
+      spec = double("spec", full_gem_path: "/tmp/missing", version: "0.1.0")
 
       allow(invalidation_key_provider).to receive(:call).and_raise(Errno::ENOENT)
 
-      expect(loader.invalidation_key_for(double("spec"))).to be_nil
+      expect(loader.invalidation_key_for(spec)).to be_nil
     end
   end
 end
