@@ -264,7 +264,7 @@ RSpec.describe GemDocs::DocRegistry do
           cache_path = File.join(tmpdir, "artifacts.sqlite3")
           cache = GemDocs::ArtifactCache.new(path: cache_path)
           registry = described_class.new(cache: cache)
-          invalidation_key = registry.send(:artifact_invalidation_key, spec)
+          invalidation_key = registry.artifact_invalidation_key_for("corrupt_cache_fixture")
 
           cache.write_artifact(
             gem_name: "corrupt_cache_fixture",
@@ -652,6 +652,20 @@ RSpec.describe GemDocs::DocRegistry do
         registry = described_class.new
 
         expect(registry.doc_source_for("empty_source")).to eq(:none)
+      end
+    end
+  end
+
+  describe "#artifact_invalidation_key_for" do
+    it "delegates invalidation key generation to the gem loader" do
+      with_source_fixture_gem("invalidation_delegate_fixture", source: "module InvalidationDelegateFixture; end\n") do |spec|
+        gem_loader = instance_double(GemDocs::CachingGemLoader)
+        allow(gem_loader).to receive(:resolve_spec!).with("invalidation_delegate_fixture", version: nil).and_return(spec)
+        allow(gem_loader).to receive(:invalidation_key_for).with(spec).and_return("digest-v1")
+
+        registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+        expect(registry.artifact_invalidation_key_for("invalidation_delegate_fixture")).to eq("digest-v1")
       end
     end
   end
