@@ -2,7 +2,6 @@
 
 require "open3"
 require "prism"
-require "digest"
 
 module GemDocs
   class DocRegistry
@@ -140,7 +139,7 @@ module GemDocs
         shell_runner: ->(command) { run_shell(*command) },
         loaded_gem_builder: loaded_gem_builder
       )
-      @gem_loader = gem_loader || GemLoader.new(
+      base_loader = GemLoader.new(
         spec_resolver: self.class.method(:gem_spec_for),
         doc_source_detector: method(:detect_doc_source),
         source_loader: method(:load_source_objects),
@@ -149,6 +148,16 @@ module GemDocs
         end,
         yard_provider: yard_provider,
         rdoc_provider: @rdoc_provider
+      )
+      invalidation_key_provider = InvalidationKeyProvider.new(
+        file_resolver: method(:ruby_files_for),
+        yardoc_resolver: method(:yardoc_path_for)
+      )
+      @gem_loader = gem_loader || CachingGemLoader.new(
+        loader: base_loader,
+        cache: @cache,
+        invalidation_key_provider: invalidation_key_provider,
+        loaded_gem_hydrator: method(:hydrate_loaded_gem)
       )
     end
 
@@ -159,20 +168,10 @@ module GemDocs
 
       normalized_version = normalize_version(version)
       spec = @gem_loader.resolve_spec!(name, version: normalized_version)
-
-      invalidation_key = safe_artifact_invalidation_key(spec)
-      cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
-      if cached_gem
-        @doc_sources[cache_key] = cached_gem.doc_source
-        @loaded_gems[cache_key] = cached_gem
-        ensure_source_artifacts_persisted(cached_gem, invalidation_key: invalidation_key)
-        return cached_gem
-      end
-
-      loaded_gem = @gem_loader.load(name, version: normalized_version, spec: spec) ||
-        build_loaded_gem(spec, objects: [], doc_source: :none)
+      loaded_gem, invalidation_key = load_with_invalidation_key(name, version: normalized_version, spec: spec)
+      loaded_gem ||= build_loaded_gem(spec, objects: [], doc_source: :none)
       @doc_sources[cache_key] = loaded_gem.doc_source
-      persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
+      ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
     end
 
@@ -191,7 +190,7 @@ module GemDocs
 
     def artifact_invalidation_key_for(name, version: nil)
       spec = @gem_loader.resolve_spec!(name, version: version)
-      safe_artifact_invalidation_key(spec)
+      invalidation_key_for_spec(spec)
     end
 
     def source_artifacts_for(name, version: nil)
@@ -255,60 +254,6 @@ module GemDocs
       :none
     end
 
-    def artifact_invalidation_key(spec)
-      digest = Digest::SHA256.new
-      digest << "schema:#{GemDocs::ArtifactCache::SCHEMA_VERSION}\n"
-      digest << "gem:#{spec.name}\n"
-      digest << "version:#{spec.version}\n"
-      digest << "path:#{spec.full_gem_path}\n"
-
-      artifact_files_for(spec).sort.each do |file|
-        stat = File.stat(file)
-        digest << "file:#{file.delete_prefix("#{spec.full_gem_path}/")}\n"
-        digest << "size:#{stat.size}\n"
-        digest << "mtime:#{stat.mtime.to_r}\n"
-      end
-
-      digest.hexdigest
-    end
-
-    def artifact_files_for(spec)
-      files = ruby_files_for(spec)
-      yardoc = yardoc_path_for(spec)
-      files << yardoc if File.file?(yardoc)
-      files.uniq
-    end
-
-    def safe_artifact_invalidation_key(spec)
-      artifact_invalidation_key(spec)
-    rescue StandardError
-      nil
-    end
-
-    def fetch_cached_loaded_gem(spec, invalidation_key:)
-      return unless @cache && invalidation_key
-
-      cached_gem = @cache.fetch_loaded_gem(
-        gem_name: spec.name,
-        gem_version: spec.version.to_s,
-        invalidation_key: invalidation_key
-      )
-      return unless cached_gem
-
-      hydrate_cached_loaded_gem(spec, cached_gem)
-    rescue StandardError
-      nil
-    end
-
-    def persist_loaded_gem(loaded_gem, invalidation_key:)
-      return unless @cache && invalidation_key
-
-      @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
-      persist_source_artifacts(loaded_gem, invalidation_key: invalidation_key)
-    rescue StandardError
-      nil
-    end
-
     def persist_source_artifacts(loaded_gem, invalidation_key:)
       loaded_gem.objects.dup.each do |entry|
         resolved_entry = loaded_gem.find(entry.path) || entry
@@ -343,6 +288,14 @@ module GemDocs
       []
     end
 
+    def load_with_invalidation_key(name, version:, spec:)
+      if @gem_loader.respond_to?(:load_with_invalidation_key)
+        @gem_loader.load_with_invalidation_key(name, version: version, spec: spec)
+      else
+        [ @gem_loader.load(name, version: version, spec: spec), invalidation_key_for_spec(spec) ]
+      end
+    end
+
     def source_artifact_payload(loaded_gem, entry)
       {
         "gem_name" => loaded_gem.name,
@@ -361,10 +314,16 @@ module GemDocs
       }
     end
 
-    def hydrate_cached_loaded_gem(spec, loaded_gem)
+    def hydrate_loaded_gem(spec, loaded_gem)
       return loaded_gem unless loaded_gem.doc_source == :rdoc
 
       @rdoc_provider.hydrate_loaded_gem(spec, loaded_gem)
+    end
+
+    def invalidation_key_for_spec(spec)
+      return unless @gem_loader.respond_to?(:invalidation_key_for)
+
+      @gem_loader.invalidation_key_for(spec)
     end
 
     def cache_key_for(name, version)
