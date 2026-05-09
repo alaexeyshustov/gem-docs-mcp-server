@@ -165,9 +165,19 @@ module GemDocs
         status, response_headers, response_body = app.call(env)
         write_http_response(socket, status, response_headers, response_body)
       rescue RequestTimeoutError
-        write_http_response(socket, 408, json_headers, [ JSON.generate(error: "Request Timeout") ])
+        write_http_response(
+          socket,
+          408,
+          json_headers,
+          [ JSON.generate(error: "request_timeout", message: "Request Timeout") ]
+        )
       rescue RequestTooLargeError
-        write_http_response(socket, 413, json_headers, [ JSON.generate(error: "Payload Too Large") ])
+        write_http_response(
+          socket,
+          413,
+          json_headers,
+          [ JSON.generate(error: "payload_too_large", message: "Payload Too Large") ]
+        )
       end
       private_class_method :handle_http_connection
 

@@ -52,7 +52,8 @@ module GemDocs
       loader: GemLoader,
       cache: ArtifactCache?,
       invalidation_key_provider: InvalidationKeyProvider,
-      ?loaded_gem_hydrator: ^(Gem::Specification, DocRegistry::LoadedGem) -> DocRegistry::LoadedGem
+      ?loaded_gem_hydrator: ^(Gem::Specification, DocRegistry::LoadedGem) -> DocRegistry::LoadedGem,
+      ?source_artifact_builder: ^(DocRegistry::LoadedGem, DocRegistry::Entry) -> Hash[String, untyped]
     ) -> void
     def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
     def load_with_invalidation_key: (
@@ -61,6 +62,13 @@ module GemDocs
       ?spec: Gem::Specification?
     ) -> [DocRegistry::LoadedGem?, String?]
     def detect_source: (Gem::Specification spec) -> doc_source
+    def source_artifacts_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> Array[Hash[Symbol, untyped]]
+    def lookup_artifact_for: (
+      String path,
+      gem_name: String,
+      ?version: String?,
+      ?spec: Gem::Specification?
+    ) -> { kind: Symbol, payload: untyped }?
     def invalidation_key_for: (Gem::Specification spec) -> String?
     def provider_available?: (Gem::Specification spec) -> bool
     def resolve_spec!: (String name, ?version: String?) -> Gem::Specification
@@ -69,6 +77,11 @@ module GemDocs
 
     def fetch_cached_loaded_gem: (Gem::Specification spec, invalidation_key: String?) -> DocRegistry::LoadedGem?
     def persist_loaded_gem: (DocRegistry::LoadedGem? loaded_gem, invalidation_key: String?) -> bool?
+    def persist_source_artifacts: (DocRegistry::LoadedGem loaded_gem, invalidation_key: String) -> Array[Hash[Symbol, untyped]]
+    def ensure_source_artifacts_persisted: (
+      DocRegistry::LoadedGem loaded_gem,
+      invalidation_key: String
+    ) -> Array[Hash[Symbol, untyped]]
     def invalidation_cache_key: (Gem::Specification spec) -> [String, String]
   end
 
@@ -302,8 +315,6 @@ module GemDocs
       ?lazy_paths: Array[String]
     ) -> LoadedGem
     def build_source_loaded_gem: (Gem::Specification spec, objects: Array[Entry], doc_source: doc_source) -> LoadedGem
-    def persist_source_artifacts: (LoadedGem loaded_gem, invalidation_key: String) -> Array[Entry]
-    def ensure_source_artifacts_persisted: (LoadedGem loaded_gem, invalidation_key: String?) -> Array[Hash[Symbol, untyped]]
     def load_with_invalidation_key: (String name, version: String?, spec: Gem::Specification) -> [LoadedGem?, String?]
     def source_artifact_payload: (LoadedGem loaded_gem, Entry entry) -> Hash[String, untyped]
     def hydrate_loaded_gem: (Gem::Specification spec, LoadedGem loaded_gem) -> LoadedGem
@@ -377,6 +388,7 @@ module GemDocs
       invalidation_key: String,
       ?artifact_version: Integer?
     ) -> true
+    def write_artifacts: (Array[Hash[Symbol, untyped]] artifacts) -> true
 
     private
 
@@ -389,6 +401,16 @@ module GemDocs
     def build_entry: (Hash[String, untyped] payload) -> DocRegistry::Entry
     def symbolize_hash: (untyped value) -> untyped
     def default_artifact_version: (Symbol artifact_kind) -> Integer
+    def write_artifact_row: (
+      SQLite3::Database database,
+      gem_name: String,
+      gem_version: String,
+      lookup_target: String,
+      artifact_kind: Symbol,
+      payload: untyped,
+      invalidation_key: String,
+      ?artifact_version: Integer?
+    ) -> Array[Array[untyped]]
     def compressed_usable?: (untyped payload) -> bool
     def artifact_payload_digest: (untyped payload) -> String
   end
