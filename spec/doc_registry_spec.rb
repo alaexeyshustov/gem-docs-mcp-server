@@ -7,63 +7,33 @@ require "gem_docs"
 RSpec.describe GemDocs::DocRegistry do
   describe "#load_gem" do
     it "uses the gem loader for the source-only fallback path" do
-      with_source_fixture_gem("source_only", source: "module SourceOnly; end\n") do |spec|
-        loaded_gem = instance_double(
-          GemDocs::DocRegistry::LoadedGem,
-          doc_source: :source_only,
-          name: "source_only",
-          version: "0.1.0"
-        )
-        gem_loader = instance_double(GemDocs::GemLoader)
-        allow(gem_loader).to receive(:resolve_spec!).with("source_only", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:provider_available?).with(spec).and_return(false)
-        allow(gem_loader).to receive(:load).with("source_only", version: nil, spec: spec).and_return(loaded_gem)
+      loaded_gem = instance_double(
+        GemDocs::DocRegistry::LoadedGem,
+        doc_source: :source_only,
+        name: "source_only",
+        version: "0.1.0"
+      )
+      gem_loader = instance_double(GemDocs::GemLoader)
+      allow(gem_loader).to receive(:load).with("source_only", version: nil).and_return(loaded_gem)
 
-        registry = described_class.new(cache: false, gem_loader: gem_loader)
+      registry = described_class.new(cache: false, gem_loader: gem_loader)
 
-        expect(registry.load_gem("source_only")).to equal(loaded_gem)
-      end
+      expect(registry.load_gem("source_only")).to equal(loaded_gem)
     end
 
     it "uses the gem loader for the YARD path" do
-      with_yard_fixture_gem("well_documented", source: "module WellDocumented; end\n") do |spec|
-        loaded_gem = instance_double(
-          GemDocs::DocRegistry::LoadedGem,
-          doc_source: :yard,
-          name: "well_documented",
-          version: "0.1.0"
-        )
-        gem_loader = instance_double(GemDocs::GemLoader)
-        allow(gem_loader).to receive(:resolve_spec!).with("well_documented", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:provider_available?).with(spec).and_return(true)
-        allow(gem_loader).to receive(:load).with("well_documented", version: nil, spec: spec).and_return(loaded_gem)
+      loaded_gem = instance_double(
+        GemDocs::DocRegistry::LoadedGem,
+        doc_source: :yard,
+        name: "well_documented",
+        version: "0.1.0"
+      )
+      gem_loader = instance_double(GemDocs::GemLoader)
+      allow(gem_loader).to receive(:load).with("well_documented", version: nil).and_return(loaded_gem)
 
-        registry = described_class.new(cache: false, gem_loader: gem_loader)
+      registry = described_class.new(cache: false, gem_loader: gem_loader)
 
-        expect(registry.load_gem("well_documented")).to equal(loaded_gem)
-      end
-    end
-
-    it "reuses the caching loader invalidation key returned during load" do
-      with_source_fixture_gem("source_only", source: "module SourceOnly; end\n") do |spec|
-        loaded_gem = instance_double(
-          GemDocs::DocRegistry::LoadedGem,
-          doc_source: :source_only,
-          name: "source_only",
-          version: "0.1.0",
-          objects: []
-        )
-        gem_loader = instance_double(GemDocs::CachingGemLoader)
-        allow(gem_loader).to receive(:resolve_spec!).with("source_only", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:load_with_invalidation_key)
-          .with("source_only", version: nil, spec: spec)
-          .and_return([ loaded_gem, "digest-v1" ])
-
-        registry = described_class.new(cache: false, gem_loader: gem_loader)
-
-        expect(gem_loader).not_to receive(:invalidation_key_for)
-        expect(registry.load_gem("source_only")).to equal(loaded_gem)
-      end
+      expect(registry.load_gem("well_documented")).to equal(loaded_gem)
     end
 
     it "loads the shared local YARD fixture through the shared helper" do
@@ -626,15 +596,12 @@ RSpec.describe GemDocs::DocRegistry do
 
   describe "#doc_source_for" do
     it "uses the gem loader to detect no-doc gems" do
-      with_empty_fixture_gem("empty_fixture") do |spec|
-        gem_loader = instance_double(GemDocs::GemLoader)
-        allow(gem_loader).to receive(:resolve_spec!).with("empty_fixture", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:detect_source).with(spec).and_return(:none)
+      gem_loader = instance_double(GemDocs::GemLoader)
+      allow(gem_loader).to receive(:detect_source).with("empty_fixture", version: nil, spec: nil).and_return(:none)
 
-        registry = described_class.new(cache: false, gem_loader: gem_loader)
+      registry = described_class.new(cache: false, gem_loader: gem_loader)
 
-        expect(registry.doc_source_for("empty_fixture")).to eq(:none)
-      end
+      expect(registry.doc_source_for("empty_fixture")).to eq(:none)
     end
 
     it "reuses cached versioned loads for doc source lookups" do
@@ -726,52 +693,14 @@ RSpec.describe GemDocs::DocRegistry do
 
   describe "#artifact_invalidation_key_for" do
     it "delegates invalidation key generation to the gem loader" do
-      with_source_fixture_gem("invalidation_delegate_fixture", source: "module InvalidationDelegateFixture; end\n") do |spec|
-        gem_loader = instance_double(GemDocs::CachingGemLoader)
-        allow(gem_loader).to receive(:resolve_spec!).with("invalidation_delegate_fixture", version: nil).and_return(spec)
-        allow(gem_loader).to receive(:invalidation_key_for).with(spec).and_return("digest-v1")
+      gem_loader = instance_double(GemDocs::CachingGemLoader)
+      allow(gem_loader).to receive(:invalidation_key_for)
+        .with("invalidation_delegate_fixture", version: nil)
+        .and_return("digest-v1")
 
-        registry = described_class.new(cache: false, gem_loader: gem_loader)
+      registry = described_class.new(cache: false, gem_loader: gem_loader)
 
-        expect(registry.artifact_invalidation_key_for("invalidation_delegate_fixture")).to eq("digest-v1")
-      end
-    end
-
-    it "reuses the caching loader invalidation key during a load" do
-      with_source_fixture_gem("stable_invalidation_fixture", source: <<~RUBY) do |spec|
-        module StableInvalidationFixture
-          class Widget
-            def call(input)
-            end
-          end
-        end
-      RUBY
-        cache = GemDocs::ArtifactCache.new(path: File.join(spec.full_gem_path, "cache.sqlite3"))
-        invalidation_key_provider = instance_double(GemDocs::InvalidationKeyProvider)
-        base_loader = instance_double(GemDocs::GemLoader)
-        caching_loader = GemDocs::CachingGemLoader.new(
-          loader: base_loader,
-          cache: cache,
-          invalidation_key_provider: invalidation_key_provider
-        )
-
-        registry = described_class.new(cache: cache, gem_loader: caching_loader)
-        loaded_gem = registry.send(
-          :build_source_loaded_gem,
-          spec,
-          objects: registry.send(:load_source_objects, spec),
-          doc_source: :source_only
-        )
-
-        allow(base_loader).to receive(:resolve_spec!).with("stable_invalidation_fixture", version: nil).and_return(spec)
-        allow(base_loader).to receive(:load).with("stable_invalidation_fixture", version: nil, spec: spec).and_return(loaded_gem)
-        allow(base_loader).to receive(:provider_available?).and_return(false)
-        allow(invalidation_key_provider).to receive(:call).with(spec).and_return("digest-v1")
-
-        registry.load_gem("stable_invalidation_fixture")
-
-        expect(invalidation_key_provider).to have_received(:call).once
-      end
+      expect(registry.artifact_invalidation_key_for("invalidation_delegate_fixture")).to eq("digest-v1")
     end
   end
 

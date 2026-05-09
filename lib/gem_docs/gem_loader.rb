@@ -29,11 +29,24 @@ module GemDocs
       load_fallback(spec, doc_source: doc_source)
     end
 
-    def detect_source(spec)
+    def detect_source(name_or_spec, version: nil, spec: nil)
+      spec ||= name_or_spec.is_a?(String) ? resolve_spec!(name_or_spec, version: version) : name_or_spec
       return :yard if @yard_provider&.available?(spec)
       return :rdoc if @rdoc_provider&.available?(spec)
 
       @doc_source_detector.call(spec)
+    end
+
+    def invalidation_key_for(_name, version: nil, spec: nil)
+      nil
+    end
+
+    def source_artifacts_for(_name, version: nil, spec: nil)
+      []
+    end
+
+    def lookup_artifact_for(_path, gem_name:, version: nil, spec: nil)
+      nil
     end
 
     def provider_available?(spec)

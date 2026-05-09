@@ -38,12 +38,13 @@ module GemDocs
       [ loaded_gem, invalidation_key ]
     end
 
-    def detect_source(spec)
+    def detect_source(name_or_spec, version: nil, spec: nil)
+      spec ||= name_or_spec.is_a?(String) ? resolve_spec!(name_or_spec, version: version) : name_or_spec
       invalidation_key = invalidation_key_for(spec)
       cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
       return cached_gem.doc_source if cached_gem
 
-      @loader.detect_source(spec)
+      @loader.detect_source(name_or_spec, version: version, spec: spec)
     end
 
     def source_artifacts_for(name, version: nil, spec: nil)
@@ -68,7 +69,9 @@ module GemDocs
       nil
     end
 
-    def invalidation_key_for(spec)
+    def invalidation_key_for(name_or_spec, version: nil, spec: nil)
+      spec ||= name_or_spec.is_a?(String) ? resolve_spec!(name_or_spec, version: version) : name_or_spec
+
       @invalidation_keys.fetch(invalidation_cache_key(spec)) do
         @invalidation_keys[invalidation_cache_key(spec)] = @invalidation_key_provider.call(spec)
       end
