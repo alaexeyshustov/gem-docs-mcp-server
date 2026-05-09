@@ -40,7 +40,7 @@ module GemDocs
       ?yard_provider: DocProviders::Yard?,
       ?rdoc_provider: DocProviders::Rdoc?
     ) -> void
-    def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
+    def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem
     def detect_source: ((String | Gem::Specification) name_or_spec, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def invalidation_key_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> nil
     def source_artifacts_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> Array[Hash[Symbol, untyped]]
@@ -63,12 +63,12 @@ module GemDocs
       ?loaded_gem_hydrator: ^(Gem::Specification, DocRegistry::LoadedGem) -> DocRegistry::LoadedGem,
       ?source_artifact_builder: ^(DocRegistry::LoadedGem, DocRegistry::Entry) -> Hash[String, untyped]
     ) -> void
-    def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem?
+    def load: (String name, ?version: String?, ?spec: Gem::Specification?) -> DocRegistry::LoadedGem
     def load_with_invalidation_key: (
       String name,
       ?version: String?,
       ?spec: Gem::Specification?
-    ) -> [DocRegistry::LoadedGem?, String?]
+    ) -> [DocRegistry::LoadedGem, String?]
     def detect_source: ((String | Gem::Specification) name_or_spec, ?version: String?, ?spec: Gem::Specification?) -> doc_source
     def source_artifacts_for: (String name, ?version: String?, ?spec: Gem::Specification?) -> Array[Hash[Symbol, untyped]]
     def lookup_artifact_for: (

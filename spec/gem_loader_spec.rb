@@ -232,6 +232,20 @@ RSpec.describe GemDocs::GemLoader do
         expect(loaded_gem.entry_points).to eq([])
       end
     end
+
+    it "raises a registry error when the detector returns an unsupported source" do
+      with_source_fixture_gem("source_only", source: "module SourceOnly; end\n") do
+        loader = described_class.new(
+          spec_resolver: GemDocs::DocRegistry.method(:gem_spec_for),
+          doc_source_detector: ->(_resolved_spec) { :unexpected },
+          source_loader: ->(_resolved_spec) { raise "unused" },
+          loaded_gem_builder: ->(_resolved_spec, _objects, _doc_source) { raise "unused" }
+        )
+
+        expect { loader.load("source_only") }
+          .to raise_error(GemDocs::RegistryError, "Unsupported documentation source: :unexpected")
+      end
+    end
   end
 
   describe "#load_fallback" do
