@@ -167,6 +167,125 @@ RSpec.describe GemDocs::CachingGemLoader do
     end
   end
 
+  describe "#source_artifacts_for" do
+    it "persists per-entry source artifacts for offline compression" do
+      with_source_fixture_gem("compression_source_fixture", source: <<~RUBY) do |spec|
+        module CompressionSourceFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        loaded_gem = build_loaded_gem(spec, source: :source_only)
+        base_loader = instance_double(GemDocs::GemLoader)
+        invalidation_key_provider = double("invalidation key provider", call: "digest-v1")
+
+        Dir.mktmpdir do |tmpdir|
+          cache = GemDocs::ArtifactCache.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+          allow(base_loader).to receive(:resolve_spec!).with("compression_source_fixture", version: nil).and_return(spec)
+          allow(base_loader).to receive(:load).with("compression_source_fixture", version: nil, spec: spec).and_return(loaded_gem)
+
+          loader = described_class.new(
+            loader: base_loader,
+            cache: cache,
+            invalidation_key_provider: invalidation_key_provider,
+            source_artifact_builder: lambda do |cached_loaded_gem, entry|
+              {
+                "gem_name" => cached_loaded_gem.name,
+                "gem_version" => cached_loaded_gem.version,
+                "doc_source" => entry.doc_source.to_s,
+                "path" => entry.path,
+                "signature" => entry.signature
+              }
+            end
+          )
+
+          artifacts = loader.source_artifacts_for("compression_source_fixture")
+
+          expect(artifacts.map { |artifact| artifact.fetch(:lookup_target) }).to include(
+            "CompressionSourceFixture",
+            "CompressionSourceFixture::Widget",
+            "CompressionSourceFixture::Widget#call"
+          )
+          expect(artifacts.find { |artifact| artifact.fetch(:lookup_target) == "CompressionSourceFixture::Widget#call" })
+            .to include(
+              payload: include(
+                "path" => "CompressionSourceFixture::Widget#call",
+                "signature" => "CompressionSourceFixture::Widget#call(input)",
+                "doc_source" => "source_only"
+              )
+            )
+        end
+      end
+    end
+  end
+
+  describe "#lookup_artifact_for" do
+    it "backfills missing source artifacts from cached snapshots before lookup" do
+      with_source_fixture_gem("compression_lookup_fixture", source: <<~RUBY) do |spec|
+        module CompressionLookupFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        loaded_gem = build_loaded_gem(spec, source: :source_only)
+        invalidation_key_provider = double("invalidation key provider", call: "digest-v1")
+        base_loader = instance_double(GemDocs::GemLoader)
+
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          cache = GemDocs::ArtifactCache.new(path: cache_path)
+          cache.write_loaded_gem(loaded_gem, invalidation_key: "digest-v1")
+
+          SQLite3::Database.new(cache_path).tap do |database|
+            database.execute(
+              "DELETE FROM documentation_artifacts WHERE gem_name = ? AND lookup_target != ?",
+              "compression_lookup_fixture",
+              GemDocs::ArtifactCache::GEM_LOOKUP_TARGET
+            )
+          ensure
+            database.close
+          end
+
+          allow(base_loader).to receive(:resolve_spec!).with("compression_lookup_fixture", version: nil).and_return(spec)
+          allow(base_loader).to receive(:load)
+
+          loader = described_class.new(
+            loader: base_loader,
+            cache: cache,
+            invalidation_key_provider: invalidation_key_provider,
+            source_artifact_builder: lambda do |cached_loaded_gem, entry|
+              {
+                "gem_name" => cached_loaded_gem.name,
+                "gem_version" => cached_loaded_gem.version,
+                "doc_source" => entry.doc_source.to_s,
+                "path" => entry.path,
+                "signature" => entry.signature
+              }
+            end
+          )
+
+          artifact = loader.lookup_artifact_for(
+            "CompressionLookupFixture::Widget#call",
+            gem_name: "compression_lookup_fixture"
+          )
+
+          expect(artifact).to include(
+            kind: :source,
+            payload: include(
+              "path" => "CompressionLookupFixture::Widget#call",
+              "signature" => "CompressionLookupFixture::Widget#call(input)"
+            )
+          )
+          expect(base_loader).not_to have_received(:load)
+        end
+      end
+    end
+  end
+
   describe "#detect_source" do
     it "reads the doc source from cached snapshots" do
       with_source_fixture_gem("cached_source_fixture", source: "module CachedSourceFixture; end\n") do |spec|

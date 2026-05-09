@@ -240,6 +240,49 @@ RSpec.describe GemDocs::DocRegistry do
       end
     end
 
+    it "backfills missing lookup artifacts through the compatibility facade" do
+      with_source_fixture_gem("compression_lookup_fixture", source: <<~RUBY) do
+        module CompressionLookupFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        Dir.mktmpdir do |tmpdir|
+          cache_path = File.join(tmpdir, "artifacts.sqlite3")
+          cache = GemDocs::ArtifactCache.new(path: cache_path)
+          initial_registry = described_class.new(cache: cache)
+
+          initial_registry.load_gem("compression_lookup_fixture")
+
+          SQLite3::Database.new(cache_path).tap do |database|
+            database.execute(
+              "DELETE FROM documentation_artifacts WHERE gem_name = ? AND lookup_target != ?",
+              "compression_lookup_fixture",
+              GemDocs::ArtifactCache::GEM_LOOKUP_TARGET
+            )
+          ensure
+            database.close
+          end
+
+          rebuilt_registry = described_class.new(cache: GemDocs::ArtifactCache.new(path: cache_path))
+          artifact = rebuilt_registry.lookup_artifact_for(
+            "CompressionLookupFixture::Widget#call",
+            gem_name: "compression_lookup_fixture"
+          )
+
+          expect(artifact).to include(
+            kind: :source,
+            payload: include(
+              "path" => "CompressionLookupFixture::Widget#call",
+              "signature" => "CompressionLookupFixture::Widget#call(input)"
+            )
+          )
+        end
+      end
+    end
+
     it "invalidates persisted documentation artifacts when gem contents change" do
       with_source_fixture_gem("mutable_fixture", source: <<~RUBY) do |spec|
         module MutableFixture
@@ -726,6 +769,32 @@ RSpec.describe GemDocs::DocRegistry do
 
         expect(invalidation_key_provider).to have_received(:call).once
       end
+    end
+  end
+
+  describe "#source_artifacts_for" do
+    it "delegates artifact loading to the gem loader compatibility facade" do
+      gem_loader = double("gem loader")
+      artifact = { lookup_target: "Fixture::Widget#call" }
+      registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+      expect(gem_loader).to receive(:source_artifacts_for).with("fixture", version: nil).and_return([ artifact ])
+
+      expect(registry.source_artifacts_for("fixture")).to eq([ artifact ])
+    end
+  end
+
+  describe "#lookup_artifact_for" do
+    it "delegates artifact lookup to the gem loader compatibility facade" do
+      gem_loader = double("gem loader")
+      artifact = { kind: :source, payload: { "path" => "Fixture::Widget#call" } }
+      registry = described_class.new(cache: false, gem_loader: gem_loader)
+
+      expect(gem_loader).to receive(:lookup_artifact_for)
+        .with("Fixture::Widget#call", gem_name: "fixture", version: nil)
+        .and_return(artifact)
+
+      expect(registry.lookup_artifact_for("Fixture::Widget#call", gem_name: "fixture")).to eq(artifact)
     end
   end
 

@@ -157,7 +157,8 @@ module GemDocs
         loader: base_loader,
         cache: @cache,
         invalidation_key_provider: invalidation_key_provider,
-        loaded_gem_hydrator: method(:hydrate_loaded_gem)
+        loaded_gem_hydrator: method(:hydrate_loaded_gem),
+        source_artifact_builder: method(:source_artifact_payload)
       )
     end
 
@@ -171,7 +172,6 @@ module GemDocs
       loaded_gem, invalidation_key = load_with_invalidation_key(name, version: normalized_version, spec: spec)
       loaded_gem ||= build_loaded_gem(spec, objects: [], doc_source: :none)
       @doc_sources[cache_key] = loaded_gem.doc_source
-      ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key)
       @loaded_gems[cache_key] = loaded_gem
     end
 
@@ -194,26 +194,11 @@ module GemDocs
     end
 
     def source_artifacts_for(name, version: nil)
-      loaded_gem = load_gem(name, version: version)
-      invalidation_key = artifact_invalidation_key_for(name, version: loaded_gem.version)
-      return [] unless @cache && invalidation_key
-
-      ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key)
+      @gem_loader.source_artifacts_for(name, version: version)
     end
 
     def lookup_artifact_for(path, gem_name:, version: nil)
-      loaded_gem = load_gem(gem_name, version: version)
-      invalidation_key = artifact_invalidation_key_for(gem_name, version: loaded_gem.version)
-      return unless @cache && invalidation_key
-
-      @cache.fetch_with_fallback(
-        gem_name: loaded_gem.name,
-        gem_version: loaded_gem.version,
-        lookup_target: path,
-        invalidation_key: invalidation_key
-      )
-    rescue StandardError
-      nil
+      @gem_loader.lookup_artifact_for(path, gem_name: gem_name, version: version)
     end
 
     def find_object(path, gem_name:)
@@ -252,40 +237,6 @@ module GemDocs
       return :source_only if source_objects_available?(spec)
 
       :none
-    end
-
-    def persist_source_artifacts(loaded_gem, invalidation_key:)
-      loaded_gem.objects.dup.each do |entry|
-        resolved_entry = loaded_gem.find(entry.path) || entry
-        @cache.write_artifact(
-          gem_name: loaded_gem.name,
-          gem_version: loaded_gem.version,
-          lookup_target: resolved_entry.path,
-          artifact_kind: :source,
-          payload: source_artifact_payload(loaded_gem, resolved_entry),
-          invalidation_key: invalidation_key
-        )
-      end
-    end
-
-    def ensure_source_artifacts_persisted(loaded_gem, invalidation_key:)
-      return [] unless @cache && invalidation_key
-
-      artifacts = @cache.source_artifacts(
-        gem_name: loaded_gem.name,
-        gem_version: loaded_gem.version,
-        invalidation_key: invalidation_key
-      )
-      return artifacts unless artifacts.empty? && !loaded_gem.objects.empty?
-
-      persist_source_artifacts(loaded_gem, invalidation_key: invalidation_key)
-      @cache.source_artifacts(
-        gem_name: loaded_gem.name,
-        gem_version: loaded_gem.version,
-        invalidation_key: invalidation_key
-      )
-    rescue StandardError
-      []
     end
 
     def load_with_invalidation_key(name, version:, spec:)
