@@ -127,34 +127,47 @@ module GemDocs
     end
 
     def write_artifact(gem_name:, gem_version:, lookup_target:, artifact_kind:, payload:, invalidation_key:, artifact_version: nil)
+      write_artifacts(
+        [
+          {
+            gem_name: gem_name,
+            gem_version: gem_version,
+            lookup_target: lookup_target,
+            artifact_kind: artifact_kind,
+            payload: payload,
+            invalidation_key: invalidation_key,
+            artifact_version: artifact_version
+          }
+        ]
+      )
+    end
+
+    def write_artifacts(artifacts)
+      return true if artifacts.empty?
+
       with_database do |database|
-        database.execute(
-          <<~SQL,
-            INSERT INTO documentation_artifacts (
-              gem_name,
-              gem_version,
-              lookup_target,
-              artifact_kind,
-              invalidation_key,
-              artifact_version,
-              payload,
-              updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(gem_name, gem_version, lookup_target, artifact_kind)
-            DO UPDATE SET
-              invalidation_key = excluded.invalidation_key,
-              artifact_version = excluded.artifact_version,
-              payload = excluded.payload,
-              updated_at = CURRENT_TIMESTAMP
-          SQL
-          gem_name,
-          gem_version,
-          lookup_target,
-          artifact_kind.to_s,
-          invalidation_key,
-          artifact_version || default_artifact_version(artifact_kind),
-          JSON.generate(payload)
-        )
+        transaction_open = false
+
+        begin
+          database.execute("BEGIN IMMEDIATE TRANSACTION")
+          transaction_open = true
+          artifacts.each do |artifact|
+            write_artifact_row(
+              database,
+              gem_name: artifact.fetch(:gem_name),
+              gem_version: artifact.fetch(:gem_version),
+              lookup_target: artifact.fetch(:lookup_target),
+              artifact_kind: artifact.fetch(:artifact_kind),
+              payload: artifact.fetch(:payload),
+              invalidation_key: artifact.fetch(:invalidation_key),
+              artifact_version: artifact[:artifact_version]
+            )
+          end
+          database.execute("COMMIT")
+          transaction_open = false
+        ensure
+          database.execute("ROLLBACK") if transaction_open
+        end
       end
 
       true
@@ -299,6 +312,36 @@ module GemDocs
 
     def default_artifact_version(artifact_kind)
       ARTIFACT_VERSIONS.fetch(artifact_kind.to_sym)
+    end
+
+    def write_artifact_row(database, gem_name:, gem_version:, lookup_target:, artifact_kind:, payload:, invalidation_key:, artifact_version: nil)
+      database.execute(
+        <<~SQL,
+          INSERT INTO documentation_artifacts (
+            gem_name,
+            gem_version,
+            lookup_target,
+            artifact_kind,
+            invalidation_key,
+            artifact_version,
+            payload,
+            updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(gem_name, gem_version, lookup_target, artifact_kind)
+          DO UPDATE SET
+            invalidation_key = excluded.invalidation_key,
+            artifact_version = excluded.artifact_version,
+            payload = excluded.payload,
+            updated_at = CURRENT_TIMESTAMP
+        SQL
+        gem_name,
+        gem_version,
+        lookup_target,
+        artifact_kind.to_s,
+        invalidation_key,
+        artifact_version || default_artifact_version(artifact_kind),
+        JSON.generate(payload)
+      )
     end
 
     def compressed_usable?(payload)

@@ -3,7 +3,7 @@
 - Use TDD for new features and refactoring. Always run `bundle exec rspec` after making changes.
 - Use Rubocop omakase style. Run `bundle exec rubocop -a` after editing Ruby files
 - Use rbs signatures and Steep for type checking. Run `bundle exec steep check` after editing Ruby files.
-- Testing Framework: RSpec, FactoryBot, VCR.
+- Testing Framework: RSpec.
 
 ## High-level architecture
 

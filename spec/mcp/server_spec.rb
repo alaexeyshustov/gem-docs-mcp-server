@@ -228,6 +228,10 @@ RSpec.describe GemDocs::MCP::Server do
       )
 
       expect(written_response).to include("408 Request Timeout")
+      expect(JSON.parse(written_response.split("\r\n\r\n", 2).last)).to eq(
+        "error" => "request_timeout",
+        "message" => "Request Timeout"
+      )
     end
 
     it "returns 413 for request bodies above the configured size limit" do
@@ -253,6 +257,10 @@ RSpec.describe GemDocs::MCP::Server do
       )
 
       expect(written_response).to include("413 Payload Too Large")
+      expect(JSON.parse(written_response.split("\r\n\r\n", 2).last)).to eq(
+        "error" => "payload_too_large",
+        "message" => "Payload Too Large"
+      )
     end
 
     it "normalizes request header names before reading the body and building rack env" do

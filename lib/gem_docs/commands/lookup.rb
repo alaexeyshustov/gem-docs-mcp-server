@@ -92,11 +92,15 @@ module GemDocs
 
       def lookup_payload(result)
         entry = result.fetch(:entry)
-        cached_artifact = doc_registry.lookup_artifact_for(
-          entry.path,
-          gem_name: result.fetch(:gem_name),
-          version: result.fetch(:version)
-        )
+        cached_artifact = if result.fetch(:gem_name) == "ruby"
+          nil
+        else
+          doc_registry.lookup_artifact_for(
+            entry.path,
+            gem_name: result.fetch(:gem_name),
+            version: result.fetch(:version)
+          )
+        end
 
         payload = {
           path: entry.path,

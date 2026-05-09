@@ -1,5 +1,8 @@
 # frozen_string_literal: true
 
+require "json"
+require "sqlite3"
+
 module GemDocs
   class CachingGemLoader
     def initialize(
@@ -28,14 +31,10 @@ module GemDocs
       spec ||= resolve_spec!(name, version: version)
       invalidation_key = invalidation_key_for(spec)
       cached_gem = fetch_cached_loaded_gem(spec, invalidation_key: invalidation_key)
-      if cached_gem
-        ensure_source_artifacts_persisted(cached_gem, invalidation_key: invalidation_key) if invalidation_key
-        return [ cached_gem, invalidation_key ]
-      end
+      return [ cached_gem, invalidation_key ] if cached_gem
 
       loaded_gem = @loader.load(name, version: version, spec: spec)
       persist_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
-      ensure_source_artifacts_persisted(loaded_gem, invalidation_key: invalidation_key) if loaded_gem && invalidation_key
       [ loaded_gem, invalidation_key ]
     end
 
@@ -65,7 +64,7 @@ module GemDocs
         lookup_target: path,
         invalidation_key: invalidation_key
       )
-    rescue StandardError
+    rescue JSON::ParserError, SQLite3::Exception
       nil
     end
 
@@ -73,7 +72,7 @@ module GemDocs
       @invalidation_keys.fetch(invalidation_cache_key(spec)) do
         @invalidation_keys[invalidation_cache_key(spec)] = @invalidation_key_provider.call(spec)
       end
-    rescue StandardError
+    rescue SystemCallError
       nil
     end
 
@@ -98,7 +97,7 @@ module GemDocs
       return unless cached_gem
 
       @loaded_gem_hydrator.call(spec, cached_gem)
-    rescue StandardError
+    rescue JSON::ParserError, SQLite3::Exception
       nil
     end
 
@@ -106,28 +105,32 @@ module GemDocs
       return unless @cache && invalidation_key && loaded_gem
 
       @cache.write_loaded_gem(loaded_gem, invalidation_key: invalidation_key)
-    rescue StandardError
+    rescue SQLite3::Exception
       nil
     end
 
     def persist_source_artifacts(loaded_gem, invalidation_key:)
-      return unless @source_artifact_builder
+      return [] unless @cache && @source_artifact_builder
 
-      loaded_gem.objects.dup.each do |entry|
+      artifact_rows = loaded_gem.objects.dup.map do |entry|
+        # `find` may lazily hydrate a richer entry; keep the snapshot entry as a safe fallback.
         resolved_entry = loaded_gem.find(entry.path) || entry
-        @cache.write_artifact(
+        {
           gem_name: loaded_gem.name,
           gem_version: loaded_gem.version,
           lookup_target: resolved_entry.path,
           artifact_kind: :source,
           payload: @source_artifact_builder.call(loaded_gem, resolved_entry),
           invalidation_key: invalidation_key
-        )
+        }
       end
+
+      @cache.write_artifacts(artifact_rows)
+      artifact_rows
     end
 
     def ensure_source_artifacts_persisted(loaded_gem, invalidation_key:)
-      return [] unless @source_artifact_builder
+      return [] unless @cache && @source_artifact_builder
 
       artifacts = @cache.source_artifacts(
         gem_name: loaded_gem.name,
@@ -142,7 +145,7 @@ module GemDocs
         gem_version: loaded_gem.version,
         invalidation_key: invalidation_key
       )
-    rescue StandardError
+    rescue JSON::ParserError, SQLite3::Exception
       []
     end
 

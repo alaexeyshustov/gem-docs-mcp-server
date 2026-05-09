@@ -397,13 +397,16 @@ RSpec.describe GemDocs::DocRegistry do
           end
         end
 
-        registry = described_class.new(shell_runner: shell_runner)
+        registry = described_class.new(
+          shell_runner: shell_runner,
+          cache: GemDocs::ArtifactCache.new(path: File.join(spec.full_gem_path, "cache.sqlite3"))
+        )
 
         loaded_gem = registry.load_gem("rdoc_only")
         object = registry.find_object("RdocOnly::Widget#call", gem_name: "rdoc_only")
 
         expect(loaded_gem.doc_source).to eq(:rdoc)
-        expect(commands.count { |command| command.last == "RdocOnly::Widget" }).to eq(1)
+        expect(commands.count { |command| command.last == "-l" }).to eq(1)
         expect(commands.count { |command| command.last == "RdocOnly::Widget#call" }).to eq(1)
         expect(object&.doc_source).to eq(:rdoc)
         expect(object&.docstring).to include("Calls through ri.")

@@ -168,6 +168,53 @@ RSpec.describe GemDocs::CachingGemLoader do
   end
 
   describe "#source_artifacts_for" do
+    it "persists source artifacts once on a cache miss and returns the refreshed cache rows" do
+      with_source_fixture_gem("source_artifact_cache_fixture", source: <<~RUBY) do |spec|
+        module SourceArtifactCacheFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        loaded_gem = build_loaded_gem(spec, source: :source_only)
+        base_loader = instance_double(GemDocs::GemLoader)
+        cache = instance_double(GemDocs::ArtifactCache)
+        invalidation_key_provider = double("invalidation key provider", call: "digest-v1")
+        persisted_artifacts = [
+          {
+            lookup_target: "SourceArtifactCacheFixture::Widget#call",
+            artifact_version: 1,
+            invalidation_key: "digest-v1",
+            payload: { "path" => "SourceArtifactCacheFixture::Widget#call" },
+            payload_digest: "digest"
+          }
+        ]
+
+        allow(base_loader).to receive(:resolve_spec!).with("source_artifact_cache_fixture", version: nil).and_return(spec)
+        allow(base_loader).to receive(:load).with("source_artifact_cache_fixture", version: nil, spec: spec).and_return(loaded_gem)
+        allow(cache).to receive(:fetch_loaded_gem).and_return(nil)
+        allow(cache).to receive(:write_loaded_gem).and_return(true)
+        allow(cache).to receive(:source_artifacts).and_return([], persisted_artifacts)
+        allow(cache).to receive(:write_artifacts).and_return(true)
+
+        loader = described_class.new(
+          loader: base_loader,
+          cache: cache,
+          invalidation_key_provider: invalidation_key_provider,
+          source_artifact_builder: lambda do |_cached_loaded_gem, entry|
+            {
+              "path" => entry.path,
+              "signature" => entry.signature
+            }
+          end
+        )
+
+        expect(loader.source_artifacts_for("source_artifact_cache_fixture")).to eq(persisted_artifacts)
+        expect(cache).to have_received(:write_artifacts).once
+      end
+    end
+
     it "persists per-entry source artifacts for offline compression" do
       with_source_fixture_gem("compression_source_fixture", source: <<~RUBY) do |spec|
         module CompressionSourceFixture
@@ -222,6 +269,34 @@ RSpec.describe GemDocs::CachingGemLoader do
   end
 
   describe "#lookup_artifact_for" do
+    it "treats cache parse failures as cache misses" do
+      with_source_fixture_gem("lookup_cache_failure_fixture", source: "module LookupCacheFailureFixture; end\n") do |spec|
+        loaded_gem = build_loaded_gem(spec, source: :source_only)
+        invalidation_key_provider = double("invalidation key provider", call: "digest-v1")
+        base_loader = instance_double(GemDocs::GemLoader)
+        cache = instance_double(GemDocs::ArtifactCache)
+
+        allow(base_loader).to receive(:resolve_spec!).with("lookup_cache_failure_fixture", version: nil).and_return(spec)
+        allow(base_loader).to receive(:load).with("lookup_cache_failure_fixture", version: nil, spec: spec).and_return(loaded_gem)
+        allow(cache).to receive(:fetch_loaded_gem).and_return(nil)
+        allow(cache).to receive(:write_loaded_gem).and_return(true)
+        allow(cache).to receive(:source_artifacts).and_return([])
+        allow(cache).to receive(:write_artifacts).and_return(true)
+        allow(cache).to receive(:fetch_with_fallback).and_raise(JSON::ParserError, "unexpected token")
+
+        loader = described_class.new(
+          loader: base_loader,
+          cache: cache,
+          invalidation_key_provider: invalidation_key_provider,
+          source_artifact_builder: ->(_cached_loaded_gem, entry) { { "path" => entry.path } }
+        )
+
+        expect(
+          loader.lookup_artifact_for("LookupCacheFailureFixture", gem_name: "lookup_cache_failure_fixture")
+        ).to be_nil
+      end
+    end
+
     it "backfills missing source artifacts from cached snapshots before lookup" do
       with_source_fixture_gem("compression_lookup_fixture", source: <<~RUBY) do |spec|
         module CompressionLookupFixture

@@ -55,7 +55,40 @@ RSpec.describe GemDocs::ArtifactCache do
         payload: { "docstring" => "Full source docs" },
         invalidation_key: "digest-v1"
       )).to be(true)
-      expect(attempts).to eq(2)
+      expect(attempts).to eq(4)
+    end
+  end
+
+  it "writes multiple artifacts in a single transaction" do
+    Dir.mktmpdir do |tmpdir|
+      cache = described_class.new(path: File.join(tmpdir, "artifacts.sqlite3"))
+
+      expect(cache.write_artifacts(
+        [
+          {
+            gem_name: "demo",
+            gem_version: "1.0.0",
+            lookup_target: "Demo::Widget",
+            artifact_kind: :source,
+            payload: { "path" => "Demo::Widget" },
+            invalidation_key: "digest-v1"
+          },
+          {
+            gem_name: "demo",
+            gem_version: "1.0.0",
+            lookup_target: "Demo::Widget#call",
+            artifact_kind: :source,
+            payload: { "path" => "Demo::Widget#call" },
+            invalidation_key: "digest-v1"
+          }
+        ]
+      )).to be(true)
+
+      expect(cache.source_artifacts(
+        gem_name: "demo",
+        gem_version: "1.0.0",
+        invalidation_key: "digest-v1"
+      ).map { |artifact| artifact.fetch(:lookup_target) }).to eq([ "Demo::Widget", "Demo::Widget#call" ])
     end
   end
 
