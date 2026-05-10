@@ -402,5 +402,35 @@ RSpec.describe GemDocs::CachingGemLoader do
 
       expect(loader.invalidation_key_for(spec)).to be_nil
     end
+
+    it "reuses the cached invalidation key after a load" do
+      with_source_fixture_gem("stable_invalidation_fixture", source: <<~RUBY) do |spec|
+        module StableInvalidationFixture
+          class Widget
+            def call(input)
+            end
+          end
+        end
+      RUBY
+        loaded_gem = build_loaded_gem(spec, source: :source_only)
+        invalidation_key_provider = instance_double(GemDocs::InvalidationKeyProvider)
+        base_loader = instance_double(GemDocs::GemLoader)
+
+        allow(base_loader).to receive(:resolve_spec!).with("stable_invalidation_fixture", version: nil).and_return(spec)
+        allow(base_loader).to receive(:load).with("stable_invalidation_fixture", version: nil, spec: spec).and_return(loaded_gem)
+        allow(invalidation_key_provider).to receive(:call).with(spec).and_return("digest-v1")
+
+        loader = described_class.new(
+          loader: base_loader,
+          cache: nil,
+          invalidation_key_provider: invalidation_key_provider
+        )
+
+        loader.load("stable_invalidation_fixture")
+
+        expect(loader.invalidation_key_for("stable_invalidation_fixture")).to eq("digest-v1")
+        expect(invalidation_key_provider).to have_received(:call).once
+      end
+    end
   end
 end

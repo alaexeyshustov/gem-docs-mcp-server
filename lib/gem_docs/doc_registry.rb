@@ -168,9 +168,7 @@ module GemDocs
       return loaded_gem if loaded_gem
 
       normalized_version = normalize_version(version)
-      spec = @gem_loader.resolve_spec!(name, version: normalized_version)
-      loaded_gem, invalidation_key = load_with_invalidation_key(name, version: normalized_version, spec: spec)
-      loaded_gem ||= build_loaded_gem(spec, objects: [], doc_source: :none)
+      loaded_gem = @gem_loader.load(name, version: normalized_version)
       @doc_sources[cache_key] = loaded_gem.doc_source
       @loaded_gems[cache_key] = loaded_gem
     end
@@ -181,24 +179,21 @@ module GemDocs
       return loaded_gem.doc_source if loaded_gem
 
       normalized_version = normalize_version(version)
-      spec ||= @gem_loader.resolve_spec!(name, version: normalized_version)
-
       @doc_sources.fetch(cache_key) do
-        @doc_sources[cache_key] = @gem_loader.detect_source(spec)
+        @doc_sources[cache_key] = @gem_loader.detect_source(name, version: normalized_version, spec: spec)
       end
     end
 
     def artifact_invalidation_key_for(name, version: nil)
-      spec = @gem_loader.resolve_spec!(name, version: version)
-      invalidation_key_for_spec(spec)
+      @gem_loader.invalidation_key_for(name, version: normalize_version(version))
     end
 
     def source_artifacts_for(name, version: nil)
-      @gem_loader.source_artifacts_for(name, version: version)
+      @gem_loader.source_artifacts_for(name, version: normalize_version(version))
     end
 
     def lookup_artifact_for(path, gem_name:, version: nil)
-      @gem_loader.lookup_artifact_for(path, gem_name: gem_name, version: version)
+      @gem_loader.lookup_artifact_for(path, gem_name: gem_name, version: normalize_version(version))
     end
 
     def find_object(path, gem_name:)
@@ -239,14 +234,6 @@ module GemDocs
       :none
     end
 
-    def load_with_invalidation_key(name, version:, spec:)
-      if @gem_loader.respond_to?(:load_with_invalidation_key)
-        @gem_loader.load_with_invalidation_key(name, version: version, spec: spec)
-      else
-        [ @gem_loader.load(name, version: version, spec: spec), invalidation_key_for_spec(spec) ]
-      end
-    end
-
     def source_artifact_payload(loaded_gem, entry)
       {
         "gem_name" => loaded_gem.name,
@@ -271,12 +258,6 @@ module GemDocs
       @rdoc_provider.hydrate_loaded_gem(spec, loaded_gem)
     end
 
-    def invalidation_key_for_spec(spec)
-      return unless @gem_loader.respond_to?(:invalidation_key_for)
-
-      @gem_loader.invalidation_key_for(spec)
-    end
-
     def cache_key_for(name, version)
       normalized_version = normalize_version(version)
       return name if normalized_version.nil?
@@ -288,12 +269,6 @@ module GemDocs
       return nil if version.nil? || version.empty?
 
       version
-    end
-
-    def resolve_spec(name, version: nil)
-      @gem_loader.resolve_spec!(name, version: version)
-    rescue GemDocs::GemNotFound
-      nil
     end
 
     def build_loaded_gem(spec, objects:, doc_source:, dynamic_lookup: nil, lazy_paths: [])

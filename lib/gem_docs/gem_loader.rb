@@ -21,19 +21,52 @@ module GemDocs
     def load(name, version: nil, spec: nil)
       spec ||= resolve_spec!(name, version: version)
       doc_source = detect_source(spec)
-      return @yard_provider.load(spec) if doc_source == :yard && @yard_provider
-      return @rdoc_provider.load(spec) if doc_source == :rdoc && @rdoc_provider
-      return load_fallback(spec) if [ :yard, :rdoc ].include?(doc_source)
-      return unless doc_source == :source_only || doc_source == :none
+      case doc_source
+      when :yard
+        loaded_gem = @yard_provider&.load(spec)
+        return loaded_gem if loaded_gem
 
-      load_fallback(spec, doc_source: doc_source)
+        return load_fallback(spec)
+      when :rdoc
+        loaded_gem = @rdoc_provider&.load(spec)
+        return loaded_gem if loaded_gem
+
+        return load_fallback(spec)
+      when :source_only, :none
+        return load_fallback(spec, doc_source: doc_source)
+      end
+
+      raise GemDocs::RegistryError.new(
+        "Unsupported documentation source: #{doc_source.inspect}",
+        details: {
+          gem_name: spec.name,
+          gem_version: spec.version.to_s,
+          doc_source: doc_source
+        }
+      )
     end
 
-    def detect_source(spec)
+    def detect_source(name_or_spec, version: nil, spec: nil)
+      spec ||= name_or_spec.is_a?(String) ? resolve_spec!(name_or_spec, version: version) : name_or_spec
       return :yard if @yard_provider&.available?(spec)
       return :rdoc if @rdoc_provider&.available?(spec)
 
       @doc_source_detector.call(spec)
+    end
+
+    def invalidation_key_for(_name, version: nil, spec: nil)
+      _unused = [ version, spec ]
+      nil
+    end
+
+    def source_artifacts_for(_name, version: nil, spec: nil)
+      _unused = [ version, spec ]
+      []
+    end
+
+    def lookup_artifact_for(_path, gem_name:, version: nil, spec: nil)
+      _unused = [ gem_name, version, spec ]
+      nil
     end
 
     def provider_available?(spec)
